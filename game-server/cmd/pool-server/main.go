@@ -65,9 +65,9 @@ func main() {
 	signal.Notify(sig, syscall.SIGTERM, syscall.SIGINT)
 	<-sig
 	slog.Info("shutdown requested")
-	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Second)
-	defer cancel()
-	_ = httpServer.Shutdown(ctx)
-	manager.Shutdown(ctx)
+	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 50*time.Second)
+	defer shutdownCancel()
+	_ = httpServer.Shutdown(shutdownCtx)
+	manager.Shutdown(shutdownCtx)
 	slog.Info("shutdown complete")
 }
