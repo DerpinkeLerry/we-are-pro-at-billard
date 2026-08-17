@@ -30,6 +30,7 @@ type Lobby struct {
 	queue                                                            []string
 	active                                                           [2]string
 	game                                                             *match.Game
+	soloMatch                                                        bool
 	join                                                             chan joinCmd
 	leave                                                            chan leaveCmd
 	messages                                                         chan msgCmd
@@ -170,7 +171,7 @@ func (l *Lobby) handleMessage(c msgCmd) {
 }
 
 func (l *Lobby) handleReady(p *Participant, ready bool) {
-	if l.State != Starting || p.ActiveSeat < 0 {
+	if l.State != Starting || !l.participantIsActive(p) {
 		return
 	}
 	p.Ready = ready
@@ -182,12 +183,17 @@ func (l *Lobby) handleReady(p *Participant, ready bool) {
 }
 
 func (l *Lobby) handleShot(p *Participant, m protocol.ClientMessage) {
-	if p.ActiveSeat < 0 {
+	if !l.participantIsActive(p) {
 		p.Conn.SendEvent("SHOT_REJECTED", map[string]any{"requestId": m.RequestID, "reason": "spectator_cannot_shoot"})
 		return
 	}
 	if l.game == nil {
 		p.Conn.SendEvent("SHOT_REJECTED", map[string]any{"requestId": m.RequestID, "reason": "no_active_match"})
+		return
+	}
+	shooter := l.game.Turn
+	if !l.participantOwnsSeat(p, shooter) {
+		p.Conn.SendEvent("SHOT_REJECTED", map[string]any{"requestId": m.RequestID, "reason": "not_your_turn"})
 		return
 	}
 	if !allowWindow(&p.ShotTimes, 8, 2*time.Second) {
@@ -203,7 +209,7 @@ func (l *Lobby) handleShot(p *Participant, m protocol.ClientMessage) {
 		return
 	}
 	in := match.ShotInput{RequestID: m.RequestID, TurnNonce: m.TurnNonce, AimAngle: m.AimAngle, Power: m.Power, CueOffsetX: m.CueOffsetX, CueOffsetY: m.CueOffsetY, CalledBall: m.CalledBall, CalledPocket: m.CalledPocket, Safety: m.Safety}
-	sim, out, err := l.game.StartShot(p.ActiveSeat, in)
+	sim, out, err := l.game.StartShot(shooter, in)
 	if err != nil {
 		slog.Warn("shot rejected", "lobby", l.Code, "participant", p.PublicID, "reason", err.Error())
 		p.Conn.SendEvent("SHOT_REJECTED", map[string]any{"requestId": m.RequestID, "reason": err.Error()})
@@ -211,19 +217,21 @@ func (l *Lobby) handleShot(p *Participant, m protocol.ClientMessage) {
 	}
 	l.shotDeadline = time.Time{}
 	l.playback = &Playback{Start: time.Now(), SimDuration: time.Duration(sim.Report.SimulationDuration * float64(time.Second))}
-	l.broadcast("SHOT_ACCEPTED", map[string]any{"requestId": m.RequestID, "shooter": p.ActiveSeat, "durationMs": int64(sim.Report.SimulationDuration * 1000)})
+	l.broadcast("SHOT_ACCEPTED", map[string]any{"requestId": m.RequestID, "shooter": shooter, "durationMs": int64(sim.Report.SimulationDuration * 1000)})
 	l.broadcast("COLLISION_EVENTS", sim.Report.Events)
 	matchID := l.game.ID
 	shotNo := l.game.ShotNumber + 1
 	principal := p.Principal
-	go l.persistShot(matchID, shotNo, principal, in, sim, out)
+	if !l.soloMatch {
+		go l.persistShot(matchID, shotNo, principal, in, sim, out)
+	}
 }
 
 func (l *Lobby) handlePlacement(p *Participant, m protocol.ClientMessage) {
-	if l.game == nil || p.ActiveSeat < 0 {
+	if l.game == nil || !l.participantOwnsSeat(p, l.game.Turn) {
 		return
 	}
-	if err := l.game.PlaceCueBall(p.ActiveSeat, physics.Vec2{X: m.X, Y: m.Y}); err != nil {
+	if err := l.game.PlaceCueBall(l.game.Turn, physics.Vec2{X: m.X, Y: m.Y}); err != nil {
 		p.Conn.SendEvent("SERVER_ERROR", map[string]any{"code": "invalid_ball_in_hand", "message": err.Error()})
 		return
 	}
@@ -233,10 +241,10 @@ func (l *Lobby) handlePlacement(p *Participant, m protocol.ClientMessage) {
 	l.saveCheckpoint()
 }
 func (l *Lobby) handleBreakChoice(p *Participant, choice string) {
-	if l.game == nil || p.ActiveSeat < 0 {
+	if l.game == nil || !l.participantOwnsSeat(p, l.game.PendingChoice.Actor) {
 		return
 	}
-	if err := l.game.ResolveBreakChoice(p.ActiveSeat, choice); err != nil {
+	if err := l.game.ResolveBreakChoice(l.game.PendingChoice.Actor, choice); err != nil {
 		p.Conn.SendEvent("SERVER_ERROR", map[string]any{"code": "invalid_break_choice", "message": err.Error()})
 		return
 	}
@@ -278,8 +286,10 @@ func (l *Lobby) tick() bool {
 				l.broadcastState()
 				continue
 			}
-			if seat >= 0 && seat < 2 {
-				l.active[seat] = ""
+			for i := range l.active {
+				if l.active[i] == p.Principal {
+					l.active[i] = ""
+				}
 			}
 			delete(l.participants, p.Principal)
 			p.ActiveSeat = -1
@@ -318,6 +328,7 @@ func (l *Lobby) tick() bool {
 	}
 	if l.State == PostGame && !l.postGameDeadline.IsZero() && now.After(l.postGameDeadline) {
 		l.game = nil
+		l.soloMatch = false
 		l.State = Rotating
 		l.selectPlayersIfPossible()
 		l.broadcast("NEXT_MATCH", l.publicState())
@@ -380,13 +391,15 @@ func (l *Lobby) handleGameFinished() {
 	l.postGameDeadline = time.Now().Add(time.Duration(l.cfg.Rules.PostGameSeconds) * time.Second)
 	l.broadcast("MATCH_FINISHED", map[string]any{"match": g.Public(), "nextMatchAt": l.postGameDeadline.UnixMilli()})
 	slog.Info("match result", "lobby", l.Code, "match", g.ID, "winnerSeat", g.Winner, "reason", g.EndReason, "durationMs", g.FinishedAt.Sub(g.StartedAt).Milliseconds())
-	go func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 4*time.Second)
-		defer cancel()
-		if err := l.store.FinishMatch(ctx, g); err != nil {
-			slog.Error("persist match finish", "error", err)
-		}
-	}()
+	if !l.soloMatch {
+		go func() {
+			ctx, cancel := context.WithTimeout(context.Background(), 4*time.Second)
+			defer cancel()
+			if err := l.store.FinishMatch(ctx, g); err != nil {
+				slog.Error("persist match finish", "error", err)
+			}
+		}()
+	}
 	l.rotateActiveAfterMatch()
 	l.broadcastState()
 }
@@ -395,22 +408,70 @@ func (l *Lobby) selectPlayersIfPossible() {
 	if l.State == PostGame {
 		return
 	}
-	// A lone participant stays in the FIFO queue until a second connected
-	// participant exists. This keeps WAITING semantically distinct from an
-	// active two-seat match reservation.
-	if l.active[0] == "" && l.active[1] == "" {
-		connectedQueued := 0
-		for _, pid := range l.queue {
-			if p := l.participants[pid]; p != nil && p.Connected {
-				connectedQueued++
+	// If a real opponent arrives while a solo practice match is still waiting
+	// for Ready, give that opponent seat 1 and cancel the solo countdown.
+	if l.game == nil && l.active[0] != "" && l.active[0] == l.active[1] {
+		if opponent := l.popNextConnected(l.active[0]); opponent != "" {
+			l.active[1] = opponent
+			l.participants[opponent].ActiveSeat = 1
+			if p := l.participants[l.active[0]]; p != nil {
+				p.ActiveSeat = 0
+				p.Ready = false
 			}
+			l.participants[opponent].Ready = false
+			l.State = Starting
+			l.readyDeadline = time.Now().Add(time.Duration(l.cfg.Rules.ReadyTimeoutSeconds) * time.Second)
+			l.countdownDeadline = time.Time{}
+			l.broadcastState()
+			return
 		}
-		if connectedQueued < 2 {
+	}
+	if l.game == nil && (l.active[0] == "") != (l.active[1] == "") {
+		occupiedSeat := 0
+		emptySeat := 1
+		if l.active[0] == "" {
+			occupiedSeat, emptySeat = 1, 0
+		}
+		incumbent := l.active[occupiedSeat]
+		if opponent := l.popNextConnected(incumbent); opponent != "" {
+			l.active[emptySeat] = opponent
+			l.participants[opponent].ActiveSeat = emptySeat
+			l.participants[opponent].Ready = false
+			l.participants[incumbent].ActiveSeat = occupiedSeat
+		} else {
+			l.active[emptySeat] = incumbent
+			l.participants[incumbent].ActiveSeat = 0
+		}
+		if p := l.participants[incumbent]; p != nil {
+			p.Ready = false
+		}
+		l.State = Starting
+		l.readyDeadline = time.Now().Add(time.Duration(l.cfg.Rules.ReadyTimeoutSeconds) * time.Second)
+		l.countdownDeadline = time.Time{}
+		l.broadcastState()
+		return
+	}
+
+	if l.active[0] == "" && l.active[1] == "" {
+		first := l.popNextConnected("")
+		if first == "" {
 			l.State = Waiting
 			l.readyDeadline = time.Time{}
 			l.countdownDeadline = time.Time{}
 			l.broadcastState()
 			return
+		}
+		l.active[0] = first
+		l.participants[first].ActiveSeat = 0
+		l.participants[first].Ready = false
+		second := l.popNextConnected(first)
+		if second == "" {
+			// Solo practice: the same authenticated participant owns both seats.
+			l.active[1] = first
+		} else {
+			l.active[1] = second
+			l.participants[second].ActiveSeat = 1
+			l.participants[second].Ready = false
 		}
 	}
 	for i := 0; i < 2; i++ {
@@ -439,12 +500,52 @@ func (l *Lobby) selectPlayersIfPossible() {
 	}
 	l.broadcastState()
 }
-func (l *Lobby) rotateActiveAfterMatch() {
-	for i := 0; i < 2; i++ {
-		pid := l.active[i]
-		if pid == "" {
+
+func (l *Lobby) popNextConnected(exclude string) string {
+	for len(l.queue) > 0 {
+		pid := l.queue[0]
+		l.queue = l.queue[1:]
+		if pid == exclude {
 			continue
 		}
+		if p := l.participants[pid]; p != nil && p.Connected {
+			return pid
+		}
+	}
+	return ""
+}
+
+func (l *Lobby) seatsFor(principal string) []int {
+	seats := []int{}
+	for seat, pid := range l.active {
+		if pid == principal {
+			seats = append(seats, seat)
+		}
+	}
+	return seats
+}
+
+func (l *Lobby) participantIsActive(p *Participant) bool {
+	return p != nil && len(l.seatsFor(p.Principal)) > 0
+}
+
+func (l *Lobby) participantOwnsSeat(p *Participant, seat int) bool {
+	return p != nil && seat >= 0 && seat < len(l.active) && l.active[seat] == p.Principal
+}
+
+func (l *Lobby) isSoloActive() bool {
+	return l.active[0] != "" && l.active[0] == l.active[1]
+}
+
+func (l *Lobby) rotateActiveAfterMatch() {
+	seen := map[string]bool{}
+	for i := 0; i < 2; i++ {
+		pid := l.active[i]
+		l.active[i] = ""
+		if pid == "" || seen[pid] {
+			continue
+		}
+		seen[pid] = true
 		if p := l.participants[pid]; p != nil {
 			p.ActiveSeat = -1
 			p.Ready = false
@@ -454,14 +555,19 @@ func (l *Lobby) rotateActiveAfterMatch() {
 				delete(l.participants, pid)
 			}
 		}
-		l.active[i] = ""
 	}
 }
 func (l *Lobby) readyTimeout() {
 	front := []string{}
 	back := []string{}
+	seen := map[string]bool{}
 	for i := 0; i < 2; i++ {
 		pid := l.active[i]
+		l.active[i] = ""
+		if pid == "" || seen[pid] {
+			continue
+		}
+		seen[pid] = true
 		if p := l.participants[pid]; p != nil {
 			p.ActiveSeat = -1
 			if p.Connected {
@@ -472,7 +578,6 @@ func (l *Lobby) readyTimeout() {
 				}
 			}
 		}
-		l.active[i] = ""
 	}
 	l.queue = append(front, l.queue...)
 	l.queue = append(l.queue, back...)
@@ -490,20 +595,23 @@ func (l *Lobby) startGame() {
 		players[i] = match.Player{Principal: p.Principal, Nickname: p.Nickname, CueSkin: p.CueSkin}
 	}
 	l.game = match.New(l.ID, players, 0, l.cfg, l.engine)
+	l.soloMatch = l.active[0] != "" && l.active[0] == l.active[1]
 	l.State = Playing
 	l.readyDeadline = time.Time{}
 	l.countdownDeadline = time.Time{}
 	l.broadcast("MATCH_STARTED", l.game.Public())
 	slog.Info("match start", "lobby", l.Code, "match", l.game.ID)
 	l.setShotDeadline()
-	g := l.game
-	go func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 4*time.Second)
-		defer cancel()
-		if err := l.store.BeginMatch(ctx, g, l.cfg.Rules.Version, l.cfg.Physics.Version, l.cfg.Table.Version); err != nil {
-			slog.Error("persist match start", "error", err)
-		}
-	}()
+	if !l.soloMatch {
+		g := l.game
+		go func() {
+			ctx, cancel := context.WithTimeout(context.Background(), 4*time.Second)
+			defer cancel()
+			if err := l.store.BeginMatch(ctx, g, l.cfg.Rules.Version, l.cfg.Physics.Version, l.cfg.Table.Version); err != nil {
+				slog.Error("persist match start", "error", err)
+			}
+		}()
+	}
 	l.broadcastState()
 }
 
@@ -538,20 +646,21 @@ func (l *Lobby) allActiveConnected() bool {
 }
 
 func (l *Lobby) publicState() PublicState {
-	ps := PublicState{ID: l.ID, Code: l.Code, Name: l.Name, State: l.State}
+	ps := PublicState{ID: l.ID, Code: l.Code, Name: l.Name, State: l.State, Solo: l.isSoloActive() || (l.soloMatch && l.game != nil)}
 	if !l.shotDeadline.IsZero() {
 		ps.ShotDeadline = l.shotDeadline.UnixMilli()
 	}
 	for _, p := range l.participants {
 		role := "spectator"
 		seat := -1
+		seats := l.seatsFor(p.Principal)
 		qp := l.queuePosition(p.Principal)
-		if p.ActiveSeat >= 0 {
+		if len(seats) > 0 {
 			role = "player"
-			seat = p.ActiveSeat
+			seat = seats[0]
 			qp = 0
 		}
-		ps.Participants = append(ps.Participants, PublicParticipant{ID: p.PublicID, Nickname: p.Nickname, CueSkin: p.CueSkin, Role: role, Seat: seat, Ready: p.Ready, Reconnecting: !p.Connected, QueuePosition: qp})
+		ps.Participants = append(ps.Participants, PublicParticipant{ID: p.PublicID, Nickname: p.Nickname, CueSkin: p.CueSkin, Role: role, Seat: seat, Seats: seats, Ready: p.Ready, Reconnecting: !p.Connected, QueuePosition: qp})
 	}
 	for _, pid := range l.queue {
 		if p := l.participants[pid]; p != nil {
@@ -589,16 +698,18 @@ func (l *Lobby) broadcastSnapshot(matchID string, simTime float64, balls []physi
 }
 func (l *Lobby) runtimeSummary() RuntimeSummary {
 	players := 0
+	seen := map[string]bool{}
 	for _, id := range l.active {
-		if id != "" {
+		if id != "" && !seen[id] {
 			if p := l.participants[id]; p != nil && p.Connected {
 				players++
+				seen[id] = true
 			}
 		}
 	}
 	spec := 0
 	for _, p := range l.participants {
-		if p.Connected && p.ActiveSeat < 0 {
+		if p.Connected && !l.participantIsActive(p) {
 			spec++
 		}
 	}
@@ -642,7 +753,7 @@ func (l *Lobby) persistShot(matchID string, shotNo int, principal string, in mat
 	}
 }
 func (l *Lobby) saveCheckpoint() {
-	if l.game == nil {
+	if l.game == nil || l.soloMatch {
 		return
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 750*time.Millisecond)
@@ -653,7 +764,7 @@ func (l *Lobby) saveCheckpoint() {
 	}
 }
 func (l *Lobby) gracefulShutdown() {
-	if l.game != nil && l.game.State != match.StateFinished {
+	if l.game != nil && !l.soloMatch && l.game.State != match.StateFinished {
 		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 		_ = l.store.SaveCheckpoint(ctx, l.game.ID, l.game.Public())
 		cancel()

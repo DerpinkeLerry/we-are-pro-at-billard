@@ -106,10 +106,15 @@ func (e *Engine) integrate(balls []Ball, dt, eventTime float64, rep *ShotReport)
 		switch b.State {
 		case BallOnTable:
 			e.integrateOnTable(b, dt)
-			spinDecay := math.Exp(-e.Cfg.SpinDecay * dt)
+			spinDecayRate := e.Cfg.SpinDecay
+			if b.Vel.Len() < e.Cfg.SleepLinearSpeed*4 {
+				spinDecayRate = e.Cfg.StationarySpinDecay
+			}
+			spinDecay := math.Exp(-spinDecayRate * dt)
 			b.Omega.Z *= spinDecay
 			b.Z = r
-			if b.Vel.Len() < e.Cfg.SleepLinearSpeed && b.Omega.Len() < e.Cfg.SleepAngularSpeed {
+			horizontalSpin := math.Hypot(b.Omega.X, b.Omega.Y)
+			if b.Vel.Len() < e.Cfg.SleepLinearSpeed && horizontalSpin < e.Cfg.SleepAngularSpeed && math.Abs(b.Omega.Z) < e.Cfg.SleepSideSpinSpeed {
 				b.SleepFor += dt
 			} else {
 				b.SleepFor = 0

@@ -23,6 +23,7 @@ Abgedeckt sind unter anderem:
 - Sliding-Slip-Abbau, Rolling/Rest
 - Topspin vs Draw
 - Side Spin und Cushion-Pfad
+- stationärer Extrem-Side-Spin gibt den nächsten Turn innerhalb von 2,2 Sekunden frei
 
 ### Rules
 
@@ -41,7 +42,8 @@ Abgedeckt sind unter anderem:
 - Power/Spin/TurnNonce-Validierung
 - Ball-in-Hand-Placement
 - exakte A/B/C-FIFO-Rotation
-- einzelner Teilnehmer bleibt bis zum zweiten in der Queue
+- Solo-Training besitzt beide Sitze mit einer Verbindung
+- ein echter zweiter Teilnehmer ersetzt vor Matchbeginn den virtuellen Solo-Sitz
 - Spectator wird beim Disconnect aus Queue entfernt
 
 ## WebSocket-Integration

@@ -283,3 +283,22 @@ func TestSevenFootBreakProducesStableRackSeparation(t *testing.T) {
 		t.Fatalf("break scattered only %d balls", moved)
 	}
 }
+
+func TestStationarySideSpinCannotBlockNextTurn(t *testing.T) {
+	cfg, e := testEngine(t)
+	r := cfg.Table.Ball.Radius
+	balls := []Ball{{ID: 0, Pos: Vec2{0, 0}, Omega: Vec3{Z: 350}, Z: r, State: BallOnTable}}
+	rep := ShotReport{FirstObjectBall: -1, PocketByBall: map[int]int{}}
+	dt := 1.0 / float64(cfg.Physics.Hz)
+	elapsed := 0.0
+	for elapsed < 3 && !e.allResting(balls) {
+		e.integrate(balls, dt, elapsed+dt, &rep)
+		elapsed += dt
+	}
+	if !e.allResting(balls) {
+		t.Fatalf("stationary side spin still blocked turn after %.2fs: omega=%+v", elapsed, balls[0].Omega)
+	}
+	if elapsed > 2.2 {
+		t.Fatalf("stationary side spin took too long to settle: %.3fs", elapsed)
+	}
+}

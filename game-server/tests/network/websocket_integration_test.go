@@ -158,6 +158,28 @@ func TestWebSocketRejectsBadToken(t *testing.T) {
 	}
 }
 
+func TestLoneConnectionCanStartSoloPractice(t *testing.T) {
+	wsURL, _, cleanup := startServer(t, func(c *config.All) { c.Rules.CountdownSeconds = 0 })
+	defer cleanup()
+	a := join(t, wsURL, "guest:solo", "Solo", 1)
+	defer a.conn.Close()
+	state := mustData(t, waitFor(t, a.conn, "LOBBY_STATE", 2*time.Second))
+	if solo, _ := state["solo"].(bool); !solo || state["state"] != "STARTING" {
+		t.Fatalf("lone connection did not enter solo ready state: %#v", state)
+	}
+	parts := state["participants"].([]any)
+	seats := parts[0].(map[string]any)["seats"].([]any)
+	if len(seats) != 2 {
+		t.Fatalf("solo participant does not own both seats: %#v", parts[0])
+	}
+	write(t, a.conn, map[string]any{"type": "READY_SET", "ready": true})
+	started := mustData(t, waitFor(t, a.conn, "MATCH_STARTED", 3*time.Second))
+	players := started["players"].([]any)
+	if len(players) != 2 || players[0].(map[string]any)["principal"] != players[1].(map[string]any)["principal"] {
+		t.Fatalf("solo match does not use the same principal in both seats: %#v", players)
+	}
+}
+
 func TestThreeConnectionsProduceTwoPlayersAndQueuedSpectator(t *testing.T) {
 	wsURL, _, cleanup := startServer(t, nil)
 	defer cleanup()

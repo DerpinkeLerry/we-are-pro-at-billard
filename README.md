@@ -14,9 +14,11 @@ Apache ist der einzige öffentliche Listener. `/ws` und `/ping` werden intern an
 ## Features
 
 - öffentliche/private Lobbies, Passwort, Invite-Code und Shot Timer
+- Solo-Training: eine Verbindung kontrolliert beide Spielseiten; ein echter Gegner kann den zweiten Sitz vor Matchbeginn übernehmen
 - Guests sowie Registrierung/Login, Profil, Statistiken und Match-History
 - sieben kosmetische Cue-Skins
 - Very High / Normal / Very Low Grafikprofile
+- dauerhaft lesbare Ballnummern im Very-Low-Profil
 - server-authoritatives 8-Ball mit Call Ball/Pocket, Safety, Fouls, Scratch und Ball-in-Hand
 - FIFO-Rotation, Spectators, Ready-System und Reconnect-Grace-Period
 - 120-Hz-Go-Physics auf einer maßhaltigen 7-ft-Spielfläche mit CCD, Spin, Gleit-/Rollreibung, Cushion/Jaw-Kollisionen und geometrischen Pockets

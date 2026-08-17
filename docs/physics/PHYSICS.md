@@ -39,8 +39,8 @@ Am Ball/Tuch-Kontaktpunkt wird Schlupf aus linearer und angularer Geschwindigkei
 - Sliding-Friction wirkt gegen die Slip-Richtung und verändert lineare sowie Winkelgeschwindigkeit mit dem Trägheitsmoment einer Vollkugel (`I = 2/5 mr²`).
 - Der Zeitpunkt des Übergangs von Gleiten zu Rollen wird innerhalb des Teilsteps analytisch bestimmt. Geschwindigkeit und Rotation werden nicht mehr über einen künstlichen Blend angenähert.
 - In der Rollphase bleiben lineare Geschwindigkeit und Rollrotation exakt auf der No-Slip-Bedingung gekoppelt; Rolling Resistance baut beide gemeinsam ab.
-- Side Spin besitzt eigenen exponentiellen Decay.
-- Sleep benötigt lineare und angulare Unterschreitung über eine Mindestdauer; ein einzelner niedriger Samplewert stoppt den Ball nicht.
+- Side Spin besitzt eigenen exponentiellen Decay. Sobald die Kugel praktisch ortsfest ist, greift ein deutlich stärkerer stationärer Spin-Decay.
+- Sleep prüft Rollrotation und Z-Spin getrennt. Sichtbar irrelevanter Restspin darf den nächsten Spielzug nicht mehr blockieren; die Mindestdauer verhindert trotzdem Stoppen durch einen einzelnen niedrigen Samplewert.
 
 Koeffizienten stehen ausschließlich in `config/physics/physics-v2.json`.
 
@@ -115,6 +115,7 @@ Foot Spot und Head String liegen bei `±0.4953 m`, also exakt auf den Viertelpun
 - Bandenreibung folgt einem Coulomb-Limit statt bei jedem Kontakt pauschal einen festen Anteil der Tangentialgeschwindigkeit zu entfernen.
 - Eine Tasche nimmt keine Kugel auf, die geometrisch noch einen Jaw-Endpunkt schneidet.
 - Der Renderer integriert die übertragene 3D-Winkelgeschwindigkeit um ihre tatsächliche Weltachse statt X/Y zu vertauschen.
+- Stationärer Z-Spin klingt separat ab und kann die Turn-Freigabe nicht mehr über viele Sekunden verzögern.
 
 ## Quellen
 

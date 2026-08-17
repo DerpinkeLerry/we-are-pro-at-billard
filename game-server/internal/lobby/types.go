@@ -67,6 +67,7 @@ type PublicParticipant struct {
 	CueSkin       string `json:"cueSkin"`
 	Role          string `json:"role"`
 	Seat          int    `json:"seat"`
+	Seats         []int  `json:"seats"`
 	Ready         bool   `json:"ready"`
 	Reconnecting  bool   `json:"reconnecting"`
 	QueuePosition int    `json:"queuePosition"`
@@ -80,4 +81,5 @@ type PublicState struct {
 	Queue        []string            `json:"queue"`
 	Match        *match.PublicState  `json:"match,omitempty"`
 	ShotDeadline int64               `json:"shotDeadline,omitempty"`
+	Solo         bool                `json:"solo"`
 }

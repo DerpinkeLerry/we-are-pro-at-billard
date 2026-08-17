@@ -68,8 +68,10 @@ type Physics struct {
 	SlidingFriction                 float64 `json:"slidingFriction"`
 	RollingResistance               float64 `json:"rollingResistance"`
 	SpinDecay                       float64 `json:"spinDecay"`
+	StationarySpinDecay             float64 `json:"stationarySpinDecay"`
 	SleepLinearSpeed                float64 `json:"sleepLinearSpeed"`
 	SleepAngularSpeed               float64 `json:"sleepAngularSpeed"`
+	SleepSideSpinSpeed              float64 `json:"sleepSideSpinSpeed"`
 	SleepDuration                   float64 `json:"sleepDuration"`
 	CueMaxSpeed                     float64 `json:"cueMaxSpeed"`
 	CueMinSpeed                     float64 `json:"cueMinSpeed"`
@@ -145,7 +147,7 @@ func Load() (All, error) {
 	if math.Abs(out.Table.Ball.Diameter-2*out.Table.Ball.Radius) > 1e-9 {
 		return All{}, fmt.Errorf("ball diameter/radius mismatch")
 	}
-	if out.Physics.BallRestitution < 0 || out.Physics.BallRestitution > 1 || out.Physics.CushionRestitution < 0 || out.Physics.CushionRestitution > 1 || out.Physics.BallFriction < 0 || out.Physics.CushionFriction < 0 || out.Physics.SlidingFriction <= 0 || out.Physics.RollingResistance <= 0 || out.Physics.SlipSpeedEpsilon <= 0 || out.Physics.RestitutionVelocityThreshold < 0 {
+	if out.Physics.BallRestitution < 0 || out.Physics.BallRestitution > 1 || out.Physics.CushionRestitution < 0 || out.Physics.CushionRestitution > 1 || out.Physics.BallFriction < 0 || out.Physics.CushionFriction < 0 || out.Physics.SlidingFriction <= 0 || out.Physics.RollingResistance <= 0 || out.Physics.SpinDecay <= 0 || out.Physics.StationarySpinDecay < out.Physics.SpinDecay || out.Physics.SleepSideSpinSpeed <= 0 || out.Physics.SlipSpeedEpsilon <= 0 || out.Physics.RestitutionVelocityThreshold < 0 {
 		return All{}, fmt.Errorf("invalid physics coefficients")
 	}
 	cornerDerived := out.Table.Pockets.Corner.Mouth - 2*out.Table.Pockets.Corner.Shelf*math.Tan((out.Table.Pockets.Corner.HorizontalCutDeg-135)*math.Pi/180)
