@@ -14,7 +14,7 @@ export function decodePhysicsSnapshot(buffer){
 }
 
 export class GameClient extends EventTarget{
-  constructor({code,getTicket}){this.code=code;this.getTicket=getTicket;this.ws=null;this.closed=false;this.reconnectAttempt=0;this.ping=0;this.clockOffset=0;this.lastSeq=0;this.timer=null;this.connecting=null;this.snapshotRate=0;this.snapshotCount=0;this.snapshotTick=performance.now();this.lastPhysicsSimTime=0}
+  constructor({code,getTicket}){super();this.code=code;this.getTicket=getTicket;this.ws=null;this.closed=false;this.reconnectAttempt=0;this.ping=0;this.clockOffset=0;this.lastSeq=0;this.timer=null;this.connecting=null;this.snapshotRate=0;this.snapshotCount=0;this.snapshotTick=performance.now();this.lastPhysicsSimTime=0}
   async connect(){if(this.connecting)return this.connecting;this.connecting=this._connect().finally(()=>this.connecting=null);return this.connecting}
   async _connect(){
     this.lastSeq=0;const {token,wsUrl}=await this.getTicket();return new Promise((resolve,reject)=>{
