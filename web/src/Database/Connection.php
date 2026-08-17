@@ -16,22 +16,21 @@ final class Connection
             return self::$pdo;
         }
 
-        $url = getenv('DATABASE_URL') ?: 'postgres://pool:pool@db:5432/pool?sslmode=disable';
-        $parts = parse_url($url);
-        if ($parts === false || !isset($parts['host'], $parts['path'])) {
-            throw new RuntimeException('Invalid DATABASE_URL');
+        $path = getenv('SQLITE_PATH') ?: '/var/lib/pool/pool.sqlite';
+        $directory = dirname($path);
+        if (!is_dir($directory) && !@mkdir($directory, 0770, true) && !is_dir($directory)) {
+            throw new RuntimeException('Cannot create SQLite directory');
         }
-        parse_str($parts['query'] ?? '', $query);
-        $db = ltrim($parts['path'], '/');
-        $port = (int)($parts['port'] ?? 5432);
-        $sslmode = preg_replace('/[^a-z-]/i', '', (string)($query['sslmode'] ?? 'prefer'));
-        $dsn = sprintf('pgsql:host=%s;port=%d;dbname=%s;sslmode=%s', $parts['host'], $port, $db, $sslmode);
 
-        self::$pdo = new PDO($dsn, urldecode($parts['user'] ?? ''), urldecode($parts['pass'] ?? ''), [
+        self::$pdo = new PDO('sqlite:' . $path, null, null, [
             PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
             PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
             PDO::ATTR_EMULATE_PREPARES => false,
         ]);
+        self::$pdo->exec('PRAGMA foreign_keys = ON');
+        self::$pdo->exec('PRAGMA journal_mode = WAL');
+        self::$pdo->exec('PRAGMA synchronous = NORMAL');
+        self::$pdo->exec('PRAGMA busy_timeout = 5000');
         return self::$pdo;
     }
 }

@@ -1,0 +1,46 @@
+name: CI
+on:
+  push:
+  pull_request:
+
+jobs:
+  go:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: game-server
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.23.x'
+          cache-dependency-path: game-server/go.sum
+      - run: go test -race ./...
+      - run: go test -tags=integration ./tests/network
+      - run: go vet ./...
+
+  web:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.x'
+      - run: find web -name '*.php' -print0 | xargs -0 -n1 php -l
+      - run: find web/public/assets/js -name '*.js' -print0 | xargs -0 -n1 node --check
+      - run: python3 -m json.tool config/table/wpa-9ft-v1.json >/dev/null
+      - run: python3 -m json.tool config/physics/physics-v1.json >/dev/null
+      - run: python3 -m json.tool config/rules/wpa-8ball-v1.json >/dev/null
+      - run: |
+          python3 - <<'PY'
+          import sqlite3, pathlib
+          db = sqlite3.connect(':memory:')
+          db.executescript(pathlib.Path('database/migrations/001_init.sql').read_text())
+          assert db.execute("select count(*) from sqlite_master where type='table' and name='lobbies'").fetchone()[0] == 1
+          PY
+
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build -t pool-arena-ci .

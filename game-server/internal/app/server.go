@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"net/url"
 	"poolarena/game-server/internal/auth"
 	"poolarena/game-server/internal/lobby"
 	"poolarena/game-server/internal/persistence"
@@ -37,8 +38,23 @@ func NewServer(manager *lobby.Manager, validator *auth.Validator, store persiste
 		}
 	}
 	s := &Server{manager: manager, validator: validator, store: store, internalSecret: internalSecret, origins: origins, limiter: newIPLimiter()}
-	s.upgrader = websocket.Upgrader{ReadBufferSize: 4096, WriteBufferSize: 4096, CheckOrigin: func(r *http.Request) bool { origin := r.Header.Get("Origin"); return origin != "" && s.origins[origin] }}
+	s.upgrader = websocket.Upgrader{ReadBufferSize: 4096, WriteBufferSize: 4096, CheckOrigin: s.originAllowed}
 	return s
+}
+
+func (s *Server) originAllowed(r *http.Request) bool {
+	origin := strings.TrimSpace(r.Header.Get("Origin"))
+	if origin == "" {
+		return false
+	}
+	if s.origins[origin] {
+		return true
+	}
+	u, err := url.Parse(origin)
+	if err != nil || (u.Scheme != "http" && u.Scheme != "https") {
+		return false
+	}
+	return strings.EqualFold(u.Host, r.Host)
 }
 
 func (s *Server) Routes() *http.ServeMux {
@@ -97,7 +113,7 @@ func (s *Server) ws(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) ping(w http.ResponseWriter, r *http.Request) {
 	origin := r.Header.Get("Origin")
-	if origin != "" && s.origins[origin] {
+	if origin != "" && s.originAllowed(r) {
 		w.Header().Set("Access-Control-Allow-Origin", origin)
 		w.Header().Set("Vary", "Origin")
 	}

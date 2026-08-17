@@ -4,6 +4,7 @@ declare(strict_types=1);
 namespace Pool\Lobby;
 
 use PDO;
+use Pool\Support\Uuid;
 
 final class LobbyRepository
 {
@@ -12,7 +13,7 @@ final class LobbyRepository
     public function listOpen(): array
     {
         $stmt = $this->pdo->query(
-            "SELECT id::text, short_code, name, visibility, shot_timer_seconds, ruleset_version, table_config_version, created_at
+            "SELECT id, short_code, name, visibility, shot_timer_seconds, ruleset_version, table_config_version, created_at
              FROM lobbies WHERE closed_at IS NULL ORDER BY created_at DESC LIMIT 100"
         );
         return $stmt->fetchAll();
@@ -21,7 +22,7 @@ final class LobbyRepository
     public function findByCode(string $code): ?array
     {
         $stmt = $this->pdo->prepare(
-            "SELECT id::text, short_code, creator_principal, name, visibility, password_hash, shot_timer_seconds,
+            "SELECT id, short_code, creator_principal, name, visibility, password_hash, shot_timer_seconds,
                     ruleset_version, table_config_version, created_at
              FROM lobbies WHERE short_code=:code AND closed_at IS NULL"
         );
@@ -32,24 +33,27 @@ final class LobbyRepository
     public function create(string $principal, string $name, string $visibility, ?string $password, int $shotTimer): array
     {
         for ($attempt = 0; $attempt < 8; $attempt++) {
+            $id = Uuid::v4();
             $code = $this->shortCode();
             $hash = $visibility === 'private' && $password !== null ? password_hash($password, PASSWORD_DEFAULT) : null;
             $stmt = $this->pdo->prepare(
-                "INSERT INTO lobbies(short_code,creator_principal,name,visibility,password_hash,shot_timer_seconds)
-                 VALUES(:code,:principal,:name,:visibility,:hash,:timer)
-                 ON CONFLICT(short_code) DO NOTHING
-                 RETURNING id::text, short_code, name, visibility, shot_timer_seconds, ruleset_version, table_config_version, created_at"
+                "INSERT OR IGNORE INTO lobbies(id,short_code,creator_principal,name,visibility,password_hash,shot_timer_seconds,ruleset_version,table_config_version,created_at)
+                 VALUES(:id,:code,:principal,:name,:visibility,:hash,:timer,'wpa-8ball-v1','wpa-9ft-v1',:created)"
             );
             $stmt->execute([
+                'id' => $id,
                 'code' => $code,
                 'principal' => $principal,
                 'name' => $name,
                 'visibility' => $visibility,
                 'hash' => $hash,
                 'timer' => $shotTimer,
+                'created' => time(),
             ]);
-            if ($row = $stmt->fetch()) {
-                return $row;
+            if ($stmt->rowCount() === 1) {
+                $get = $this->pdo->prepare('SELECT id,short_code,name,visibility,shot_timer_seconds,ruleset_version,table_config_version,created_at FROM lobbies WHERE id=:id');
+                $get->execute(['id' => $id]);
+                return $get->fetch();
             }
         }
         throw new \RuntimeException('Could not allocate lobby code');

@@ -1,125 +1,82 @@
-# Pool Arena
+# Pool Arena — Single Service Edition
 
-Server-authoritatives Multiplayer-8-Ball für den Browser. PHP übernimmt Website, Identität, Lobby-Verwaltung und kurzlebige Join-Tickets; Go besitzt Lobby-, Match-, Regel- und Physics-State; PostgreSQL persistiert Konten, Lobbies, Matches und Statistiken; Three.js rendert den Tisch und interpoliert ausschließlich Serverzustand.
+Server-authoritatives Multiplayer-8-Ball für den Browser. Diese Edition ist absichtlich so gebaut, dass auf Render **nur ein einziger Docker Web Service** benötigt wird.
+
+Im selben Container laufen:
+
+- Apache + PHP für Website, Sessions, Accounts, Lobbies und Join-Tickets
+- Go für WebSocket, Rotation, Match-State, Regeln und 120-Hz-Physics
+- SQLite für Sessions, Lobbies, Match-History und Statistiken
+- Three.js im Browser für Rendering und Interpolation
+
+Apache ist der einzige öffentliche Listener. `/ws` und `/ping` werden intern an den Go-Prozess weitergeleitet. PHP und Go teilen automatisch generierte Secrets; auf Render müssen dafür keine Environment-Variablen eingerichtet werden.
 
 ## Features
 
-- öffentliche und private Lobbies mit Passwort, Invite-Code und 0/30/45/60-Sekunden Shot Timer
-- Guest-Sessions sowie Registrierung/Login, Profil, Winrate und Match History
-- sieben rein kosmetische Cue-Skins mit rotierender 3D-Vorschau
-- drei Grafikprofile: Very High, Normal und Very Low; Very Low reduziert DPR, Geometrie, Schatten und Framerate auf 30 FPS
-- server-authoritative 1v1-8-Ball-Logik mit Open Table, Solids/Stripes, Call Ball/Pocket, Safety, Fouls, Scratch, Ball-in-Hand und Break-Entscheidungen
-- echte FIFO-Spielerrotation mit Spectators und Ready-Phase
-- aktiver Reconnect-Slot mit Grace Period und Disconnect-Forfeit
-- 120-Hz-Go-Physik mit `float64`, adaptiven Substeps, swept Ball-Ball CCD, Ball-/Cushion-/Jaw-Impulsen, Sliding/Rolling, Spin und Rest Detection
-- geometrische Corner-/Side-Pockets mit Mouth, Jaw, Throat, Shelf, Back Draft und vertikalem Falling-State; keine magnetischen Pocket-Center
-- binäre 30-Hz-Physics-Snapshots (`PLS1`) und zuverlässige JSON-Kontrollereignisse
-- responsive Top-Down-Three.js-Ansicht, OrthographicCamera, Fullscreen, Spectator-Zoom, Touch, Maus und Pfeiltasten-Feinzielung
-- Lobby-Chat mit Server-Timestamp, Limits, Escaping und clientseitigem Mute
-- prozedurale WebAudio-SFX für Cue, Ball, Cushion, Pocket und Match-Ereignisse
-- Development-Debug-Overlay für Collider, Pocket-Zonen, Ball-IDs, Velocity, Spin, FPS, Netzwerk und Renderer-Statistiken
-- Docker Compose, GitHub Actions, Healthchecks und Render Blueprint
-
-## Screenshots
-
-Nach einem lokalen Start sind folgende Aufnahme-Slots vorgesehen, damit Screenshots aus der tatsächlich laufenden Build-Version stammen und nicht von der Implementierung abweichen:
-
-| Ansicht | empfohlene Aufnahme |
-|---|---|
-| Landing / Lobby Browser | `/` und `/lobbies` |
-| Join / Cue Preview | `/lobby/<CODE>` |
-| Laufendes Match | `/play/<CODE>` mit zwei Spielern |
-| Physics Debug | Development Settings → Debug Overlay |
-| Very Low | laufendes Match mit Preset `Very Low` |
-
-## Tech Stack
-
-- PHP 8.4 + Apache, PDO und Vanilla-PHP-Router/Controller/Services
-- Vanilla ES Modules + Three.js 0.185.1
-- Go 1.23
-- PostgreSQL 16
-- Docker / Docker Compose
-- Render Blueprint (`render.yaml`)
-- GitHub Actions (`.github/workflows/ci.yml`)
-
-Es gibt keinen Node.js-Runtime-Service.
+- öffentliche/private Lobbies, Passwort, Invite-Code und Shot Timer
+- Guests sowie Registrierung/Login, Profil, Statistiken und Match-History
+- sieben kosmetische Cue-Skins
+- Very High / Normal / Very Low Grafikprofile
+- server-authoritatives 8-Ball mit Call Ball/Pocket, Safety, Fouls, Scratch und Ball-in-Hand
+- FIFO-Rotation, Spectators, Ready-System und Reconnect-Grace-Period
+- 120-Hz-Go-Physics mit CCD, Spin, Reibung, Cushion/Jaw-Kollisionen und geometrischen Pockets
+- binäre Physics-Snapshots plus JSON-Control-Events
+- Maus, Tastatur und Touch
+- Lobby-Chat, Audio, Fullscreen und Debug-Overlay
 
 ## Architektur
 
 ```text
 Browser
-  | HTTPS                         | WSS
-  v                               v
-PHP Web Service              Go Game Service
-  | Sessions / Lobby               | Lobby Actor
-  | Join JWT                       | Queue / Reconnect
-  | Profile / History              | Match / Rules / Physics
-  +---------------+----------------+
-                  |
-             PostgreSQL
+   |
+   | HTTPS / WSS
+   v
++------------------------------------------+
+| EIN Render Web Service / EIN Container   |
+|                                          |
+| Apache :$PORT                            |
+|   |                                      |
+|   +--> PHP App                           |
+|   |      +--> SQLite                     |
+|   |                                      |
+|   +--> /ws,/ping --> Go :8081            |
+|                       |                  |
+|                       +--> PHP internal  |
+|                            persistence   |
++------------------------------------------+
 ```
 
-Wichtigste Vertrauensgrenze: Der Browser sendet niemals autoritative Kugelpositionen. Ein Stoß enthält nur Winkel, Power, Cue-Tip-Offset, Call-Daten, `requestId`, `matchId` und den aktuellen zufälligen `turnNonce`. Go prüft den Request und berechnet den gesamten Stoß.
-
-Weitere Details:
-
-- `docs/architecture/ARCHITECTURE.md`
-- `docs/protocol/WEBSOCKET.md`
-- `docs/physics/PHYSICS.md`
-- `docs/security/SECURITY.md`
-- `docs/testing/TESTING.md`
-- `docs/deployment/RENDER.md`
+Der Browser ist niemals autoritativ. Er sendet nur Eingaben wie Zielwinkel, Power, Cue-Offset, Call-Daten und `turnNonce`. Go entscheidet über gültige Aktionen, berechnet die komplette Physik und wertet die Regeln aus.
 
 ## Repository
 
 ```text
 .
-├── config/                  # kanonische Table/Physics/Rules-Konfigurationen
-├── database/migrations/     # PostgreSQL-Schema
-├── docs/
-├── game-server/
-│   ├── cmd/pool-server/
-│   ├── internal/
-│   │   ├── app/ auth/ config/ lobby/ match/
-│   │   ├── persistence/ physics/ protocol/ realtime/ rules/
-│   └── tests/
-├── web/
-│   ├── public/assets/
-│   ├── src/
-│   └── templates/
-├── compose.yaml
-└── render.yaml
+├── Dockerfile                    # EIN Produktions-Container
+├── compose.yaml                  # lokaler Ein-Service-Start
+├── render.yaml                   # optional; ebenfalls nur ein Service
+├── config/                       # gemeinsame Tisch/Physics/Rules-Konfiguration
+├── database/migrations/          # SQLite-Schema
+├── docker/single-service/        # Apache-Proxy + Entrypoint
+├── game-server/                  # Go Realtime/Rules/Physics
+├── web/                          # PHP + Three.js Client
+└── docs/
 ```
-
-## Voraussetzungen
-
-Für den einfachsten lokalen Start:
-
-- Docker Engine mit Docker Compose v2
-- Browser mit WebGL/WebAudio/WebSocket-Unterstützung
-- Internetzugang des Browsers für das versionsfixierte Three.js-ES-Modul von jsDelivr
-
-Für Entwicklung ohne Container zusätzlich:
-
-- Go 1.23+
-- PHP 8.4+ mit `pdo_pgsql` und `mbstring`
-- PostgreSQL 16+
 
 ## Lokaler Start
 
+Voraussetzung: Docker + Docker Compose.
+
 ```bash
-git clone <dein-repository-url> pool-arena
-cd pool-arena
 docker compose up --build
 ```
 
 Danach:
 
-- Web: `http://localhost:8080`
-- Go WebSocket: `ws://localhost:8081/ws`
-- Go Ping: `http://localhost:8081/ping`
-- PHP Health: `http://localhost:8080/health`
-- Go Health: `http://localhost:8081/health`
+- App: `http://localhost:8080`
+- Health: `http://localhost:8080/health`
+- Game Ping: `http://localhost:8080/ping`
+- WebSocket: `ws://localhost:8080/ws`
 
 Stoppen:
 
@@ -127,56 +84,78 @@ Stoppen:
 docker compose down
 ```
 
-Daten inklusive PostgreSQL-Volume entfernen:
+## Render: nur ein Web Service
 
-```bash
-docker compose down -v
-```
+1. GitHub-Repo öffnen und sicherstellen, dass `Dockerfile` direkt im Repo-Root liegt.
+2. Render → **New → Web Service**.
+3. GitHub-Repo auswählen.
+4. Branch `main`.
+5. Runtime/Language: **Docker**.
+6. Instance Type: **Free** (wenn du kostenlos testen willst).
+7. Root Directory leer lassen.
+8. Es sind **keine Environment Variables, keine Datenbank und kein zweiter Service erforderlich**.
+9. Create Web Service.
 
-## Lokales A/B/C-Abnahmeszenario
+Render baut automatisch den Root-`Dockerfile`. Der Container bindet Apache an das von Render gesetzte `$PORT`; Go läuft ausschließlich intern auf Port `8081`.
 
-1. Browser A öffnet `/lobbies`, erstellt eine Lobby und joint mit Cue/Grafikpreset.
-2. A bleibt in der FIFO-Queue, solange kein zweiter Teilnehmer da ist.
-3. Browser B joint. A und B werden reserviert, drücken `Ready`, Countdown startet, Match beginnt.
-4. Browser C joint während des Matches als Spectator auf Queue-Position 1.
-5. Nach Match-Ende werden A und B hinten an die bestehende Queue gehängt: C–A wird das nächste Paar, B wartet.
-6. Danach folgt B–C, sofern alle verbunden bleiben.
-7. Für Reconnect die Netzwerkverbindung eines aktiven Browsers kurz trennen; sein Slot bleibt während der konfigurierten Grace Period reserviert und der Match-State pausiert.
+### Wichtige Free-Tier-Einschränkung
 
-## Environment
+Die Single-Service-Edition nutzt SQLite im lokalen Container-Dateisystem. Auf einem kostenlosen Render Web Service ist dieses Dateisystem nicht persistent. Nach Spin-down, Restart oder Redeploy können daher Accounts, Lobbies, Statistiken und Match-History zurückgesetzt werden.
 
-`.env.example` dokumentiert die Variablen. Compose setzt sichere Entwicklungswerte direkt. Produktion muss eigene zufällige Secrets verwenden.
+Das laufende Multiplayer-Spiel selbst benötigt trotzdem keinen zusätzlichen Service. Wenn später dauerhafte Daten gewünscht sind, kann die Persistenz wieder auf eine externe Datenbank umgestellt werden.
 
-| Variable | Zweck |
-|---|---|
-| `APP_ENV` | `development` / `production` |
-| `APP_BASE_URL` | öffentliche PHP-Origin |
-| `GAME_PUBLIC_WS_URL` | Browser-URL des Game-WebSockets |
-| `GAME_INTERNAL_URL` | PHP → Go URL für Runtime-Lobbydaten |
-| `DATABASE_URL` | PostgreSQL DSN |
-| `JOIN_TOKEN_SECRET` | HMAC-Secret für Join-JWT, mindestens 32 Bytes |
-| `GAME_INTERNAL_SECRET` | Secret für internen Lobby-Status, mindestens 32 Bytes |
-| `ALLOWED_ORIGINS` | kommaseparierte erlaubte Browser-Origins für WSS/Ping |
-| `PORT` | Go HTTP-Port |
+## Automatische Konfiguration
+
+Beim Containerstart passiert automatisch:
+
+1. SQLite-Datei und Verzeichnis anlegen.
+2. Datenbankmigrationen ausführen.
+3. `JOIN_TOKEN_SECRET` generieren, falls nicht gesetzt.
+4. `GAME_INTERNAL_SECRET` generieren, falls nicht gesetzt.
+5. Apache auf `$PORT` konfigurieren.
+6. Apache starten.
+7. Go-Game-Server intern auf `127.0.0.1:8081` starten.
+8. `/ws` und `/ping` von Apache zu Go proxien.
+
+Du musst auf Render also keine URLs oder Secrets zwischen Diensten kopieren.
+
+## Optionale Environment-Overrides
+
+Keine Variable ist für den normalen Render-Start erforderlich.
+
+| Variable | Standard | Zweck |
+|---|---|---|
+| `PORT` | von Render / lokal 10000 | öffentlicher Apache-Port |
+| `APP_ENV` | `production` | Runtime-Modus |
+| `SQLITE_PATH` | `/var/lib/pool/pool.sqlite` | SQLite-Datei |
+| `JOIN_TOKEN_SECRET` | beim Boot generiert | Join-JWT HMAC |
+| `GAME_INTERNAL_SECRET` | beim Boot generiert | interne PHP↔Go-Authentifizierung |
+| `GAME_PUBLIC_WS_URL` | automatisch same-origin | optionaler WS-Override |
+| `ALLOWED_ORIGINS` | same-origin wird automatisch akzeptiert | zusätzliche Origin-Allowlist |
 
 ## Datenbank
 
 `database/migrations/001_init.sql` erzeugt:
 
-- `users`, `guest_sessions`, `auth_sessions`
+- `users`
+- `guest_sessions`
+- `auth_sessions`
 - `lobbies`
-- `matches`, `match_players`, `shots`, `match_checkpoints`
+- `matches`
+- `match_players`
+- `shots`
 - `player_statistics`
+- `match_checkpoints`
 
-Der Go-Server schreibt keine 120-Hz-Ticks in PostgreSQL. Persistiert werden Match-Grenzen, akzeptierte Shots, Ergebnisse, Statistiken und kompakte Checkpoints.
+Go persistiert Match-Grenzen über abgesicherte interne HTTP-Endpunkte der PHP-App. 120-Hz-Physics-Ticks werden nicht in SQLite geschrieben.
 
-Die Web-Container-Startsequenz führt `php /var/www/html/bin/migrate.php` idempotent aus.
+## HTTP- und WebSocket-Routen
 
-## PHP Service
-
-Wesentliche Routen:
+Öffentlich:
 
 - `GET /health`
+- `GET /ping`
+- `GET /ws` — WebSocket Upgrade
 - `GET /api/session`
 - `POST /api/guest`
 - `POST /api/register`
@@ -187,25 +166,18 @@ Wesentliche Routen:
 - `GET /api/profile`
 - `GET /api/matches`
 
-Schreibende API-Requests verwenden den Session-CSRF-Token. Lobby-Passwörter werden nur in PHP validiert und niemals an den Go-Server weitergereicht.
+Interne Persistenzrouten sind durch `X-Internal-Secret` geschützt und werden nur vom Go-Prozess verwendet.
 
-## Go Service
+## Tests
 
-Öffentlich:
+Go-Kernpakete:
 
-- `GET /health`
-- `GET /ping`
-- `GET /ws` (WebSocket Upgrade; erste Nachricht muss `AUTH` sein)
+```bash
+cd game-server
+go test ./internal/physics ./internal/rules ./internal/match ./internal/persistence
+```
 
-Intern:
-
-- `GET /internal/lobbies` mit `X-Internal-Secret`
-
-Jede aktive Lobby läuft als einzelner Actor/Goroutine mit exklusivem Besitz ihres Runtime-States. V1 nutzt genau eine autoritative Go-Instanz; horizontales Skalieren erfordert eine explizite Lobby-Ownership-/Actor-Verteilung und ist nicht aktiviert.
-
-## Development
-
-Alle Go-Tests:
+Vollständige Suite mit externem Modulzugriff:
 
 ```bash
 cd game-server
@@ -214,81 +186,27 @@ go test -race ./...
 go vet ./...
 ```
 
-WebSocket-Integrationstests:
-
-```bash
-cd game-server
-go test -tags=integration ./tests/network
-```
-
-PHP-Syntax:
+PHP:
 
 ```bash
 find web -name '*.php' -print0 | xargs -0 -n1 php -l
 ```
 
-JavaScript-Syntax, wenn Node nur als lokales Entwickler-Lintwerkzeug vorhanden ist:
+JavaScript:
 
 ```bash
 find web/public/assets/js -name '*.js' -print0 | xargs -0 -n1 node --check
 ```
 
-Node wird dafür nicht als Anwendungslaufzeit verwendet.
+## Weitere Dokumentation
 
-## Production Build
-
-```bash
-docker compose build --pull
-```
-
-Das Go-Dockerfile erzeugt ein statisches Binary in einem Multi-Stage-Build. Das PHP-Image installiert nur die benötigten PHP-Erweiterungen und kopiert die gemeinsame Table-Konfiguration unter `/public/config`.
-
-## Render.com
-
-`render.yaml` definiert:
-
-- `pool-web` als Docker Web Service
-- `pool-game` als Docker Web Service
-- `pool-db` als PostgreSQL-Datenbank
-- Healthchecks und Secrets/URLs als Environment-Einträge
-
-Setze `pool-game` für V1 auf genau **eine Instanz**. Trage danach im Render-Dashboard die öffentlichen und internen URLs sowie starke, auf beiden Services identische Secrets ein. Details stehen in `docs/deployment/RENDER.md`.
-
-## WebSocket-Konfiguration
-
-PHP stellt ein 60 Sekunden gültiges, signiertes Join-Ticket aus. Die erste WebSocket-Nachricht lautet:
-
-```json
-{"type":"AUTH","token":"<short-lived-jwt>"}
-```
-
-Danach werden Kontrollereignisse als JSON übertragen. Bewegungsframes sind binäre `PLS1`-Snapshots mit Sequenznummer und Serverzeit. Der Client verwirft veraltete Snapshots und interpoliert für die Anzeige.
-
-## Troubleshooting
-
-**`server_misconfigured` beim Web-Service**  
-`JOIN_TOKEN_SECRET` oder `GAME_INTERNAL_SECRET` ist kürzer als 32 Bytes oder fehlt.
-
-**WebSocket verbindet nicht**  
-`GAME_PUBLIC_WS_URL` und `ALLOWED_ORIGINS` prüfen. In Produktion muss die Browser-Verbindung `wss://` verwenden.
-
-**Lobbies werden im Browser ohne Runtime-Spieler angezeigt**  
-`GAME_INTERNAL_URL` und `GAME_INTERNAL_SECRET` zwischen PHP und Go prüfen.
-
-**Three.js lädt nicht**  
-Der Browser muss das fest gepinnte ES-Modul von `cdn.jsdelivr.net` laden dürfen. CSP und Netzwerkzugriff prüfen.
-
-**Datenbank noch nicht bereit**  
-Compose wartet über `pg_isready`; bei manueller Entwicklung zuerst PostgreSQL starten und danach `php web/bin/migrate.php` ausführen.
-
-**Debug-Collider fehlen**  
-Nur in `APP_ENV=development`: Settings → Developer Debug Overlay aktivieren.
+- `docs/architecture/ARCHITECTURE.md`
+- `docs/deployment/RENDER.md`
+- `docs/protocol/WEBSOCKET.md`
+- `docs/physics/PHYSICS.md`
+- `docs/security/SECURITY.md`
+- `docs/testing/TESTING.md`
 
 ## Regel- und Geometriequellen
 
-Die Projektkonfiguration referenziert die World Pool-Billiard Association (WPA):
-
-- Rules of Play 2026: `https://www.wpapool.com/wp-content/uploads/2026/01/2026.01.02-WPA-Rules.pdf`
-- Recommended Equipment Specifications: `https://wpapool.com/wp-content/uploads/2024/01/RECOMMENDED-EQUIPMENT-SPECIFICATIONS.pdf`
-
-Projektwerte innerhalb offizieller Spannen sind in `config/table/wpa-9ft-v1.json` zentral festgeschrieben; Renderer und Physics lesen dieselbe Quelle.
+Die gemeinsame Projektkonfiguration basiert auf den dokumentierten WPA-Regeln und Equipment-Spezifikationen. Die konkreten Projektwerte liegen versioniert in `config/` und werden von Renderer und Physics aus derselben Quelle gelesen.

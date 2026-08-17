@@ -10,7 +10,7 @@ final class Migrator
 {
     public static function run(PDO $pdo, string $directory): array
     {
-        $pdo->exec('CREATE TABLE IF NOT EXISTS schema_migrations (version text PRIMARY KEY, applied_at timestamptz NOT NULL DEFAULT now())');
+        $pdo->exec('CREATE TABLE IF NOT EXISTS schema_migrations (version TEXT PRIMARY KEY, applied_at INTEGER NOT NULL)');
         $files = glob(rtrim($directory, '/') . '/*.sql') ?: [];
         sort($files, SORT_STRING);
         $applied = [];
@@ -28,8 +28,8 @@ final class Migrator
             $pdo->beginTransaction();
             try {
                 $pdo->exec($sql);
-                $stmt = $pdo->prepare('INSERT INTO schema_migrations(version) VALUES(:version) ON CONFLICT DO NOTHING');
-                $stmt->execute(['version' => $version]);
+                $stmt = $pdo->prepare('INSERT OR IGNORE INTO schema_migrations(version, applied_at) VALUES(:version, :applied)');
+                $stmt->execute(['version' => $version, 'applied' => time()]);
                 $pdo->commit();
                 $applied[] = $version;
             } catch (\Throwable $e) {

@@ -1,92 +1,88 @@
-# Render Deployment
+# Render Deployment — Single Web Service
 
-## Ressourcen
+Diese Repository-Version ist für einen möglichst einfachen Render-Deploy gebaut.
 
-Der Root-Blueprint `render.yaml` definiert:
+## Benötigte Render-Ressourcen
 
-- `pool-web`: Docker Web Service, PHP/Apache
-- `pool-game`: Docker Web Service, Go
-- `pool-db`: PostgreSQL
+Genau eine:
 
-Beide Services erhalten einen HTTP-Healthcheck auf `/health`.
+- **Web Service**
 
-## V1-Instanzmodell
+Nicht benötigt:
 
-`pool-game` muss auf genau einer autoritativen Instanz laufen. Der Runtime-Lobby-State ist absichtlich in-memory und Actor-basiert; mehrere unabhängige Game-Instanzen ohne Lobby-Routing würden unterschiedliche Wahrheiten besitzen.
+- kein separater Go-Service
+- kein Render Postgres
+- kein Key Value Service
+- kein Blueprint
+- keine manuell synchronisierten Secrets
 
-## Environment
+## Einrichtung
 
-Auf `pool-web`:
+1. `New` → `Web Service`
+2. GitHub-Repository auswählen
+3. Branch `main`
+4. Runtime `Docker`
+5. Root Directory leer
+6. Root-`Dockerfile` verwenden
+7. Free Instance auswählen, wenn gewünscht
+8. Deploy
+
+Der Docker-Entrypoint verwendet das von Render bereitgestellte `PORT` und startet Apache auf diesem öffentlichen Port. Go läuft im selben Container nur auf `127.0.0.1:8081`.
+
+## Routing
 
 ```text
-APP_ENV=production
-APP_BASE_URL=https://<web-domain>
-GAME_PUBLIC_WS_URL=wss://<game-domain>/ws
-GAME_INTERNAL_URL=<von PHP erreichbare Go-Service-URL>
-DATABASE_URL=<Render PostgreSQL>
-JOIN_TOKEN_SECRET=<starkes gemeinsames Secret>
-GAME_INTERNAL_SECRET=<starkes gemeinsames Secret>
+/                -> PHP/Three.js
+/api/*           -> PHP
+/health          -> PHP + Go readiness check
+/ws              -> Apache reverse proxy -> Go
+/ping            -> Apache reverse proxy -> Go
 ```
 
-Auf `pool-game`:
+PHP erreicht Go intern über `http://127.0.0.1:8081`.
+
+Go erreicht die internen PHP-Persistenzendpunkte über `http://127.0.0.1:$PORT`.
+
+## Secrets
+
+Falls nicht als Environment Variable gesetzt, erzeugt der Entrypoint bei jedem Containerstart automatisch:
+
+- `JOIN_TOKEN_SECRET`
+- `GAME_INTERNAL_SECRET`
+
+Beide Prozesse erben dieselben Werte. Dadurch ist keine Render-Konfiguration nötig.
+
+## SQLite
+
+Standardpfad:
 
 ```text
-APP_ENV=production
-DATABASE_URL=<Render PostgreSQL>
-JOIN_TOKEN_SECRET=<gleich wie web>
-GAME_INTERNAL_SECRET=<gleich wie web>
-ALLOWED_ORIGINS=https://<web-domain>
-PORT=<von Render bereitgestellt>
+/var/lib/pool/pool.sqlite
 ```
 
-Secrets dürfen nicht in Git oder `render.yaml` festgeschrieben werden.
+Migrationen laufen vor dem Start der Anwendung automatisch.
 
-## Datenbank
+### Free Render
 
-Das PHP-Dockerimage führt den idempotenten Migration Runner beim Containerstart aus. Für kontrollierte Releases kann derselbe Befehl als Pre-Deploy-/One-Off-Schritt ausgeführt werden:
+Ein kostenloser Render Web Service besitzt kein dauerhaftes lokales Dateisystem. SQLite-Daten sind deshalb für Test/Hobby-Betrieb geeignet, aber nicht als dauerhafte Production-Datenhaltung. Ein Spin-down, Restart oder Redeploy kann lokale Daten entfernen.
 
-```bash
-php /var/www/html/bin/migrate.php
+Für dauerhafte Accounts und Match-History muss später eine persistente externe Datenbank oder ein kostenpflichtiger Persistent Disk ergänzt werden.
+
+## Healthcheck
+
+Empfohlener Pfad:
+
+```text
+/health
 ```
 
-## Healthchecks
+Der Endpoint prüft:
 
-`pool-web /health` prüft eine DB-Abfrage und gibt nur Service-Status zurück.
+- SQLite-Verfügbarkeit
+- ob der interne Go-Prozess auf `/ping` antwortet
 
-`pool-game /health` gibt aus:
+Er liefert `200`, wenn beide Komponenten verfügbar sind.
 
-```json
-{
-  "status":"ok",
-  "database":"ok",
-  "activeLobbies":0,
-  "connections":0
-}
-```
+## Scaling
 
-Ein kurzzeitiger DB-Fehler wird im Go-Health-Body als `degraded` ausgewiesen, ohne Tokens oder personenbezogene Daten zu veröffentlichen.
-
-## Graceful Shutdown
-
-Beim SIGTERM:
-
-1. HTTP-Server nimmt keine neuen Verbindungen mehr an.
-2. Lobby-Actors erhalten einen Shutdown-Befehl.
-3. Ein nicht finales Match schreibt einen stabilen Checkpoint.
-4. Clients erhalten `SERVER_ERROR: server_restarting` und die WebSockets werden geschlossen.
-5. Browser versuchen automatisch neu zu verbinden.
-
-Der Checkpoint ist für Diagnose/Recovery-Bausteine persistiert; V1 stellt einen durch Prozess-Restart unterbrochenen Match-State nicht automatisch aus PostgreSQL wieder her. Ein normaler Client-Network-Reconnect innerhalb eines laufenden Game-Prozesses wird vollständig unterstützt.
-
-## Domains/TLS
-
-Die Browserseite muss die Go-Origin über `wss://` erreichen. `ALLOWED_ORIGINS` enthält die exakte PHP-Origin, nicht die WebSocket-Origin. `/ping` erlaubt CORS nur für dieselbe Allowlist, damit der Lobby-Browser die echte Browser→Gateway-Latenz messen kann.
-
-## Post-Deploy-Smoke-Test
-
-1. `/health` beider Services aufrufen.
-2. öffentliche Lobby anlegen und mit zwei getrennten Browser-Sessions joinen.
-3. Ready/Countdown und einen Shot testen.
-4. dritten Spectator joinen; Queue-Position kontrollieren.
-5. aktive Verbindung kurz offline/online setzen und Reconnect prüfen.
-6. Match History nach einem abgeschlossenen/forfeiteten Match prüfen.
+Nur eine Instanz verwenden. Der autoritative Lobby-/Match-State lebt im Go-Prozess. Horizontales Scaling erfordert vorher explizites Lobby-Sharding bzw. verteilte Actor-Ownership.

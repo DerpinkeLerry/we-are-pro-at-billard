@@ -1,126 +1,80 @@
 # Architektur
 
-## Komponenten
+## Ziel
 
-### PHP Control Plane
+Ein server-authoritatives Multiplayer-8-Ball-System, das auf Render als **ein einzelner Docker Web Service** betrieben werden kann.
 
-- Guest-/Account-Sessions und CSRF
-- Lobby-Browser, Lobby-Erstellung, private Passwörter
-- Profil, Statistik und Match History
-- Validierung von Nickname/Cue-Skin
-- kurzlebige HMAC-signierte Join-JWTs
-- Lesen der Go-Runtime-Lobbyübersicht über geschützten internen HTTP-Endpunkt
-
-### Go Gameplay Plane
-
-- WebSocket-Authentifizierung und Rate Limits
-- ein Actor/Goroutine pro Lobby
-- Active Seats, Spectator-FIFO, Ready, Countdown, Shot Timer
-- Reconnect/Forfeit
-- Match State Machine und vollständige serverseitige Shot-Validierung
-- Physics Engine und getrennte 8-Ball Rules Engine
-- Match-/Shot-/Checkpoint-Persistenz
-
-### Browser / Three.js
-
-- Website-Navigation und UI
-- Eingaben als Requests, niemals als autoritativer State
-- Orthographic Top-Down Rendering
-- Snapshot-Interpolation und harte Korrektur bei finalen Keyframes
-- Grafikpresets, Audio und Debug-Visualisierung
-
-### PostgreSQL
-
-- Identitäten und Web-Sessions
-- Lobby-Metadaten
-- Matches und Match-Player-Snapshots
-- akzeptierte Shots und Final-State-Hashes
-- aggregierte Statistiken
-- stabile Match-Checkpoints
-
-## Datenfluss beim Join
+## Runtime
 
 ```text
-Browser -> PHP POST /api/lobbies/{code}/ticket
-PHP     -> prüft Session, CSRF, Lobby-Passwort, Cue, Nickname
-PHP     -> signiert JWT (60s, jti, lobby/principal/cue)
-Browser -> WSS /ws, erste Nachricht AUTH
-Go      -> prüft Origin, Signatur, Claims, Ablauf, JTI
-Go      -> bindet/ersetzt Participant-Connection
-Go      -> AUTH_OK + LOBBY_STATE + optional MATCH_KEYFRAME
+Browser
+  |
+  | HTTPS/WSS
+  v
+Apache :$PORT
+  |                    same container
+  +--> PHP ------------------------+
+  |    Sessions/Lobbies/Accounts   |
+  |    Join Tickets                v
+  |                              SQLite
+  |
+  +--> /ws,/ping --> Go :8081
+                      Lobby Actors
+                      Queue/Reconnect
+                      Match/Rules
+                      Physics
+                      |
+                      +--> internal PHP persistence API
 ```
 
-Lobby-Passwörter verlassen PHP nicht.
+## Vertrauensgrenze
 
-## Shot-Datenfluss
+Three.js besitzt nur Darstellungszustand. Autoritative Gameplay-Entscheidungen liegen vollständig in Go.
 
-```text
-Client Input
-   |
-   v
-SHOT_REQUEST
-   |
-   v
-Go Validation
-   |
-   v
-120-Hz Physics + adaptive Substeps
-   |
-   +-> ShotReport
-   |      |
-   |      v
-   |   Rules Engine
-   |      |
-   +------+
-      Match Outcome
-         |
-         +-> JSON Events
-         +-> 30-Hz binary Playback Snapshots
-         +-> PostgreSQL Shot/Checkpoint
-```
+Der Client darf insbesondere keine Kugelposition, Foulauswertung, Turn-Änderung oder Match-Ergebnis festlegen.
 
-Die Simulation wird für einen akzeptierten Stoß vollständig vorausberechnet. Das ist bei Pool möglich, weil während rollender Kugeln kein neuer legitimer Shot-Input akzeptiert wird.
+## PHP
 
-## Lobby-State-Machine
+PHP verantwortet:
 
-```text
-WAITING -> STARTING -> PLAYING -> POST_GAME -> ROTATING
-   ^          |                                  |
-   +----------+----------------------------------+
-   |
-   +--------------------------------------> CLOSING (leer)
-```
+- Guest-/Account-Sessions
+- Lobby-Metadaten und private Lobby-Passwörter
+- CSRF
+- kurzlebige Join-JWTs
+- Profil/History
+- SQLite-Persistenz
+- interne Persistenz-API für Go
 
-Ein einzelner Teilnehmer bleibt in `WAITING` in der FIFO-Queue. Erst wenn zwei verbundene Teilnehmer verfügbar sind, werden beide Active Seats reserviert und die Ready-Phase startet.
+## Go
 
-## Match-State-Machine
+Go verantwortet:
 
-```text
-TURN_AWAITING_SHOT
-   | shot accepted
-   v
-BALLS_MOVING
-   | resolve
-   +-> TURN_AWAITING_SHOT
-   +-> BALL_IN_HAND
-   +-> BREAK_OPTION
-   +-> MATCH_FINISHED
+- WebSockets
+- Participants und Connections
+- Spectators
+- FIFO-Rotation
+- Ready/Reconnect
+- Match-State-Machine
+- Shot Validation
+- Rules Engine
+- 120-Hz-Physics
+- Chat
 
-aktive Disconnects: jeder nicht-finale State -> PAUSED -> vorheriger State
-```
+## Apache
 
-## FIFO-Rotation
+Apache ist der einzige öffentliche Netzwerklistener. Es liefert PHP/Assets aus und proxyt die Echtzeitendpunkte zu Go.
 
-Active Seats sind nicht gleichzeitig Queue-Einträge. Nach Match-Ende werden die weiterhin verbundenen bisherigen Active Players hinten an die bestehende Queue gehängt.
+Damit benötigt Render nur einen Web Service und nur einen öffentlichen Port.
 
-```text
-vor Match 1: Active A,B | Queue C
-nach Match 1: Queue C,A,B -> Active C,A | Queue B
-nach Match 2: Queue B,C,A -> Active B,C | Queue A
-```
+## Persistenz
 
-Gewinner und Verlierer haben keine Priorität.
+Die Single-Service-Edition verwendet SQLite. Match-Persistenz wird nicht direkt aus Go in die Datei geschrieben, sondern über abgesicherte interne PHP-Endpunkte. Dadurch besitzt PHP exklusiv die SQL-Schreiblogik und Go bleibt unabhängig von SQLite-Treibern.
 
-## Skalierung
+## Prozessmodell
 
-V1 hält den Lobby-State im Go-Prozess und betreibt deshalb genau eine autoritative Game-Service-Instanz. Eine spätere horizontale Skalierung benötigt explizite Lobby-Ownership, Routing oder einen verteilten Actor-/State-Layer; einfach mehrere identische In-Memory-Instanzen zu starten wäre nicht korrekt.
+Der Entrypoint startet und überwacht zwei Prozesse:
+
+- Apache/PHP
+- Go Game Server
+
+Beendet sich einer unerwartet, beendet der Entrypoint den anderen ebenfalls, sodass die Plattform den Container sauber neu starten kann.

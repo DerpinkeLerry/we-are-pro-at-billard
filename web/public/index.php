@@ -19,6 +19,7 @@ use Pool\Http\Request;
 use Pool\Http\Response;
 use Pool\Lobby\LobbyRepository;
 use Pool\Service\GameDirectoryClient;
+use Pool\Service\RuntimeUrls;
 use Pool\Session\SessionManager;
 
 header("X-Content-Type-Options: nosniff");
@@ -31,7 +32,7 @@ $request = new Request();
 $pdo = Connection::get();
 $sessions = new SessionManager($pdo);
 
-if ($request->path === '/health' || str_starts_with($request->path, '/api/')) {
+if ($request->path === '/health' || str_starts_with($request->path, '/api/') || str_starts_with($request->path, '/internal/')) {
     (new ApiController($pdo, $sessions, new LobbyRepository($pdo), new GameDirectoryClient()))->dispatch($request);
 }
 
@@ -39,7 +40,7 @@ $principal = $sessions->ensureGuest();
 $bootstrap = [
     'principal' => ['type'=>$principal->type,'id'=>$principal->id,'nickname'=>$principal->nickname,'username'=>$principal->username,'csrfToken'=>$principal->csrfToken],
     'path' => $request->path,
-    'gameWsUrl' => getenv('GAME_PUBLIC_WS_URL') ?: 'ws://localhost:8081/ws',
+    'gameWsUrl' => RuntimeUrls::gameWebSocket(),
     'appEnv' => getenv('APP_ENV') ?: 'development',
     'threeUrl' => 'https://cdn.jsdelivr.net/npm/three@0.185.1/build/three.module.js',
 ];

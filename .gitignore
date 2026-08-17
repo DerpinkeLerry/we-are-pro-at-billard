@@ -5,4 +5,7 @@
 node_modules/
 coverage/
 *.log
-pool-arena.zip
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
+*.zip

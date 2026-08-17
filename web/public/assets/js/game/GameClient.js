@@ -18,7 +18,7 @@ export class GameClient extends EventTarget{
   async connect(){if(this.connecting)return this.connecting;this.connecting=this._connect().finally(()=>this.connecting=null);return this.connecting}
   async _connect(){
     this.lastSeq=0;const {token,wsUrl}=await this.getTicket();return new Promise((resolve,reject)=>{
-      const ws=new WebSocket(wsUrl);ws.binaryType='arraybuffer';this.ws=ws;let authed=false;
+      const target=new URL(wsUrl||'/ws',location.href);if(target.protocol==='http:')target.protocol='ws:';else if(target.protocol==='https:')target.protocol='wss:';const ws=new WebSocket(target.toString());ws.binaryType='arraybuffer';this.ws=ws;let authed=false;
       const fail=setTimeout(()=>{if(!authed){try{ws.close()}catch{}reject(new Error('auth_timeout'))}},7000);
       ws.onopen=()=>ws.send(JSON.stringify({type:'AUTH',token}));
       ws.onmessage=e=>{

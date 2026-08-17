@@ -23,21 +23,6 @@ func main() {
 		slog.Error("load config", "error", err)
 		os.Exit(1)
 	}
-	var store persistence.Store = persistence.Memory{}
-	if url := os.Getenv("DATABASE_URL"); url != "" {
-		pg, err := persistence.Open(url)
-		if err != nil {
-			slog.Error("open database", "error", err)
-			os.Exit(1)
-		}
-		store = pg
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		if err := pg.Ping(ctx); err != nil {
-			slog.Warn("database starts degraded", "error", err)
-		}
-		cancel()
-	}
-	defer store.Close()
 	secret := os.Getenv("JOIN_TOKEN_SECRET")
 	if len(secret) < 32 {
 		slog.Error("JOIN_TOKEN_SECRET must be at least 32 bytes")
@@ -48,6 +33,16 @@ func main() {
 		slog.Error("GAME_INTERNAL_SECRET must be at least 32 bytes")
 		os.Exit(1)
 	}
+	var store persistence.Store = persistence.Memory{}
+	if base := os.Getenv("PERSISTENCE_URL"); base != "" {
+		store = persistence.OpenHTTP(base, internalSecret)
+	}
+	defer store.Close()
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	if pingErr := store.Ping(ctx); pingErr != nil {
+		slog.Warn("persistence starts degraded", "error", pingErr)
+	}
+	cancel()
 	origins := os.Getenv("ALLOWED_ORIGINS")
 	if origins == "" {
 		origins = "http://localhost:8080"

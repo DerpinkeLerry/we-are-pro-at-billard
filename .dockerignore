@@ -1,5 +1,12 @@
 .git
 .gitignore
+.github
 *.zip
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
 .DS_Store
-**/.DS_Store
+.idea
+.vscode
+node_modules
+coverage

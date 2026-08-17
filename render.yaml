@@ -1,52 +1,9 @@
 services:
   - type: web
-    name: pool-web
+    name: pool-arena
     runtime: docker
-    dockerfilePath: ./web/Dockerfile
+    plan: free
+    dockerfilePath: ./Dockerfile
     dockerContext: .
-    healthCheckPath: /health
-    maxShutdownDelaySeconds: 30
-    envVars:
-      - key: APP_ENV
-        value: production
-      - key: APP_BASE_URL
-        sync: false
-      - key: GAME_PUBLIC_WS_URL
-        sync: false
-      - key: GAME_INTERNAL_URL
-        sync: false
-      - key: DATABASE_URL
-        fromDatabase:
-          name: pool-db
-          property: connectionString
-      - key: JOIN_TOKEN_SECRET
-        sync: false
-      - key: GAME_INTERNAL_SECRET
-        sync: false
-
-  - type: web
-    name: pool-game
-    runtime: docker
-    dockerfilePath: ./game-server/Dockerfile
-    dockerContext: .
-    numInstances: 1
     healthCheckPath: /health
     maxShutdownDelaySeconds: 60
-    envVars:
-      - key: APP_ENV
-        value: production
-      - key: DATABASE_URL
-        fromDatabase:
-          name: pool-db
-          property: connectionString
-      - key: JOIN_TOKEN_SECRET
-        sync: false
-      - key: GAME_INTERNAL_SECRET
-        sync: false
-      - key: ALLOWED_ORIGINS
-        sync: false
-
-databases:
-  - name: pool-db
-    databaseName: pool
-    user: pool

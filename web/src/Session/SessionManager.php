@@ -4,6 +4,7 @@ declare(strict_types=1);
 namespace Pool\Session;
 
 use PDO;
+use Pool\Support\Uuid;
 use RuntimeException;
 
 final class SessionManager
@@ -19,25 +20,26 @@ final class SessionManager
             return null;
         }
         $hash = hash('sha256', $token);
+        $now = time();
 
         $stmt = $this->pdo->prepare(
-            'SELECT s.user_id::text AS id, u.display_name AS nickname, u.username, s.csrf_token
+            'SELECT s.user_id AS id, u.display_name AS nickname, u.username, s.csrf_token
              FROM auth_sessions s JOIN users u ON u.id=s.user_id
-             WHERE s.token_hash=:hash AND s.expires_at>now()'
+             WHERE s.token_hash=:hash AND s.expires_at>:now'
         );
-        $stmt->execute(['hash' => $hash]);
+        $stmt->execute(['hash' => $hash, 'now' => $now]);
         if ($row = $stmt->fetch()) {
-            $this->touch('auth_sessions', $hash);
-            return new Principal('user', $row['id'], $row['nickname'], $row['csrf_token'], $row['username']);
+            $this->touch('auth_sessions', $hash, $now);
+            return new Principal('user', (string)$row['id'], (string)$row['nickname'], (string)$row['csrf_token'], (string)$row['username']);
         }
 
         $stmt = $this->pdo->prepare(
-            'SELECT id::text, nickname, csrf_token FROM guest_sessions WHERE token_hash=:hash AND expires_at>now()'
+            'SELECT id, nickname, csrf_token FROM guest_sessions WHERE token_hash=:hash AND expires_at>:now'
         );
-        $stmt->execute(['hash' => $hash]);
+        $stmt->execute(['hash' => $hash, 'now' => $now]);
         if ($row = $stmt->fetch()) {
-            $this->touch('guest_sessions', $hash);
-            return new Principal('guest', $row['id'], $row['nickname'], $row['csrf_token']);
+            $this->touch('guest_sessions', $hash, $now);
+            return new Principal('guest', (string)$row['id'], (string)$row['nickname'], (string)$row['csrf_token']);
         }
         return null;
     }
@@ -50,12 +52,21 @@ final class SessionManager
         $token = self::randomToken(32);
         $csrf = self::randomToken(32);
         $nickname = 'Guest-' . strtoupper(substr(bin2hex(random_bytes(3)), 0, 6));
+        $id = Uuid::v4();
+        $now = time();
         $stmt = $this->pdo->prepare(
-            "INSERT INTO guest_sessions(token_hash,nickname,csrf_token,expires_at)
-             VALUES(:hash,:nickname,:csrf,now()+interval '30 days') RETURNING id::text"
+            'INSERT INTO guest_sessions(id,token_hash,nickname,csrf_token,created_at,last_seen_at,expires_at)
+             VALUES(:id,:hash,:nickname,:csrf,:created,:seen,:expires)'
         );
-        $stmt->execute(['hash' => hash('sha256', $token), 'nickname' => $nickname, 'csrf' => $csrf]);
-        $id = (string)$stmt->fetchColumn();
+        $stmt->execute([
+            'id' => $id,
+            'hash' => hash('sha256', $token),
+            'nickname' => $nickname,
+            'csrf' => $csrf,
+            'created' => $now,
+            'seen' => $now,
+            'expires' => $now + 30 * 86400,
+        ]);
         $this->setCookie($token, 30 * 86400);
         return new Principal('guest', $id, $nickname, $csrf);
     }
@@ -65,8 +76,8 @@ final class SessionManager
         if ($principal->type !== 'guest') {
             return $principal;
         }
-        $stmt = $this->pdo->prepare('UPDATE guest_sessions SET nickname=:nickname,last_seen_at=now() WHERE id=:id');
-        $stmt->execute(['nickname' => $nickname, 'id' => $principal->id]);
+        $stmt = $this->pdo->prepare('UPDATE guest_sessions SET nickname=:nickname,last_seen_at=:now WHERE id=:id');
+        $stmt->execute(['nickname' => $nickname, 'now' => time(), 'id' => $principal->id]);
         return new Principal('guest', $principal->id, $nickname, $principal->csrfToken);
     }
 
@@ -75,9 +86,10 @@ final class SessionManager
         $hash = password_hash($password, PASSWORD_DEFAULT);
         $this->pdo->beginTransaction();
         try {
-            $stmt = $this->pdo->prepare('INSERT INTO users(username,display_name,password_hash) VALUES(:u,:d,:p) RETURNING id::text');
-            $stmt->execute(['u' => $username, 'd' => $displayName, 'p' => $hash]);
-            $id = (string)$stmt->fetchColumn();
+            $id = Uuid::v4();
+            $now = time();
+            $stmt = $this->pdo->prepare('INSERT INTO users(id,username,display_name,password_hash,created_at,updated_at) VALUES(:id,:u,:d,:p,:created,:updated)');
+            $stmt->execute(['id' => $id, 'u' => $username, 'd' => $displayName, 'p' => $hash, 'created' => $now, 'updated' => $now]);
             $principal = $this->createAuthSession($id, $displayName, $username);
             $this->pdo->commit();
             return $principal;
@@ -89,13 +101,13 @@ final class SessionManager
 
     public function login(string $username, string $password): ?Principal
     {
-        $stmt = $this->pdo->prepare('SELECT id::text, username, display_name, password_hash FROM users WHERE lower(username)=lower(:u)');
+        $stmt = $this->pdo->prepare('SELECT id, username, display_name, password_hash FROM users WHERE username=:u COLLATE NOCASE');
         $stmt->execute(['u' => $username]);
         $row = $stmt->fetch();
-        if (!$row || !password_verify($password, $row['password_hash'])) {
+        if (!$row || !password_verify($password, (string)$row['password_hash'])) {
             return null;
         }
-        return $this->createAuthSession($row['id'], $row['display_name'], $row['username']);
+        return $this->createAuthSession((string)$row['id'], (string)$row['display_name'], (string)$row['username']);
     }
 
     public function logout(): void
@@ -122,19 +134,28 @@ final class SessionManager
     {
         $token = self::randomToken(32);
         $csrf = self::randomToken(32);
+        $now = time();
         $stmt = $this->pdo->prepare(
-            "INSERT INTO auth_sessions(user_id,token_hash,csrf_token,expires_at)
-             VALUES(:uid,:hash,:csrf,now()+interval '14 days')"
+            'INSERT INTO auth_sessions(id,user_id,token_hash,csrf_token,created_at,last_seen_at,expires_at)
+             VALUES(:id,:uid,:hash,:csrf,:created,:seen,:expires)'
         );
-        $stmt->execute(['uid' => $userId, 'hash' => hash('sha256', $token), 'csrf' => $csrf]);
+        $stmt->execute([
+            'id' => Uuid::v4(),
+            'uid' => $userId,
+            'hash' => hash('sha256', $token),
+            'csrf' => $csrf,
+            'created' => $now,
+            'seen' => $now,
+            'expires' => $now + 14 * 86400,
+        ]);
         $this->setCookie($token, 14 * 86400);
         return new Principal('user', $userId, $displayName, $csrf, $username);
     }
 
-    private function touch(string $table, string $hash): void
+    private function touch(string $table, string $hash, int $now): void
     {
-        $stmt = $this->pdo->prepare("UPDATE {$table} SET last_seen_at=now() WHERE token_hash=:hash AND last_seen_at < now()-interval '1 minute'");
-        $stmt->execute(['hash' => $hash]);
+        $stmt = $this->pdo->prepare("UPDATE {$table} SET last_seen_at=:now WHERE token_hash=:hash AND last_seen_at<:cutoff");
+        $stmt->execute(['now' => $now, 'hash' => $hash, 'cutoff' => $now - 60]);
     }
 
     private function setCookie(string $token, int $ttl): void
