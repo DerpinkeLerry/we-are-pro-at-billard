@@ -25,7 +25,7 @@ Jede Kugel besitzt:
 
 ## Cue-Impact und Spin
 
-Power wird in eine serverseitig begrenzte lineare Cue-Ball-Geschwindigkeit umgesetzt. Der Cue-Tip-Offset erzeugt echte Winkelgeschwindigkeit:
+Power wird mit einer progressiven Kennlinie in eine serverseitig begrenzte Cue-Ball-Geschwindigkeit umgesetzt. Dadurch sind kurze Pull-backs fein dosierbar, während ein voller Pull-back weiterhin die Break-Geschwindigkeit erreicht. Der Cue-Tip-Offset erzeugt echte Winkelgeschwindigkeit:
 
 - positiver/negativer vertikaler Offset → Follow/Draw
 - horizontaler Offset → Side Spin um Z
@@ -42,7 +42,7 @@ Am Ball/Tuch-Kontaktpunkt wird Schlupf aus linearer und angularer Geschwindigkei
 - Side Spin besitzt eigenen exponentiellen Decay. Sobald die Kugel praktisch ortsfest ist, greift ein deutlich stärkerer stationärer Spin-Decay.
 - Sleep prüft Rollrotation und Z-Spin getrennt. Sichtbar irrelevanter Restspin darf den nächsten Spielzug nicht mehr blockieren; die Mindestdauer verhindert trotzdem Stoppen durch einen einzelnen niedrigen Samplewert.
 
-Koeffizienten stehen ausschließlich in `config/physics/physics-v2.json`.
+Koeffizienten stehen ausschließlich in `config/physics/physics-v3.json`.
 
 ## Ball-Ball
 
@@ -116,6 +116,12 @@ Foot Spot und Head String liegen bei `±0.4953 m`, also exakt auf den Viertelpun
 - Eine Tasche nimmt keine Kugel auf, die geometrisch noch einen Jaw-Endpunkt schneidet.
 - Der Renderer integriert die übertragene 3D-Winkelgeschwindigkeit um ihre tatsächliche Weltachse statt X/Y zu vertauschen.
 - Stationärer Z-Spin klingt separat ab und kann die Turn-Freigabe nicht mehr über viele Sekunden verzögern.
+
+## Spielgefühl in Physics v3
+
+- Die progressive Power-Kennlinie entschärft kleine Mausbewegungen und schafft mehr Kontrolle bei leichten und mittleren Stößen.
+- Die maximale Cue-Ball-Geschwindigkeit ist weiterhin stark genug für ein vollständiges Break, setzt aber weniger abrupt ein.
+- Ein geringerer Rollwiderstand lässt Kugeln auf dem 7-ft-Tuch natürlicher auslaufen; die separate schnelle Beruhigung von stationärem Side Spin bleibt unverändert.
 
 ## Quellen
 

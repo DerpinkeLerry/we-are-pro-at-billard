@@ -26,7 +26,12 @@ func (e *Engine) SimulateShot(initial []Ball, shot ShotRequest) (Simulation, err
 	if cue == nil || cue.State != BallOnTable {
 		return Simulation{}, errors.New("cue ball unavailable")
 	}
-	speed := e.Cfg.CueMinSpeed + (e.Cfg.CueMaxSpeed-e.Cfg.CueMinSpeed)*shot.Power
+	// Pull-back power is deliberately progressive. A linear mapping made short
+	// mouse movements produce disproportionately hard shots, while still
+	// offering no extra control for touch shots. Full pull-back remains the
+	// configured break speed.
+	power := math.Pow(shot.Power, e.Cfg.CuePowerExponent)
+	speed := e.Cfg.CueMinSpeed + (e.Cfg.CueMaxSpeed-e.Cfg.CueMinSpeed)*power
 	dir := Vec2{math.Cos(shot.AimAngle), math.Sin(shot.AimAngle)}
 	cue.Vel = dir.Mul(speed)
 	// A positive vertical tip offset is topspin: k x shotDirection points

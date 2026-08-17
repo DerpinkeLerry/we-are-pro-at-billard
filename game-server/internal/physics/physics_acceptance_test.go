@@ -182,6 +182,27 @@ func TestCueTipVerticalOffsetHasCorrectSpinDirection(t *testing.T) {
 	}
 }
 
+func TestCuePowerCurveGivesTouchShotsFineControl(t *testing.T) {
+	cfg, e := testEngine(t)
+	r := cfg.Table.Ball.Radius
+	initial := []Ball{{ID: 0, Pos: Vec2{0, 0}, Z: r, State: BallOnTable}}
+
+	touch, err := e.SimulateShot(initial, ShotRequest{AimAngle: 0, Power: .1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	full, err := e.SimulateShot(initial, ShotRequest{AimAngle: 0, Power: 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if speed := math.Hypot(touch.Frames[0].Balls[0].VX, touch.Frames[0].Balls[0].VY); speed >= .5 {
+		t.Fatalf("10%% touch shot is still too sensitive: %.4f m/s", speed)
+	}
+	if speed := math.Hypot(full.Frames[0].Balls[0].VX, full.Frames[0].Balls[0].VY); math.Abs(speed-cfg.Physics.CueMaxSpeed) > 1e-9 {
+		t.Fatalf("full pull-back speed %.4f, want %.4f", speed, cfg.Physics.CueMaxSpeed)
+	}
+}
+
 func TestPureRollingStaysOnNoSlipConstraint(t *testing.T) {
 	cfg, e := testEngine(t)
 	r := cfg.Table.Ball.Radius
@@ -194,6 +215,16 @@ func TestPureRollingStaysOnNoSlipConstraint(t *testing.T) {
 	expectedSpeed := 1 - cfg.Physics.RollingResistance*cfg.Physics.Gravity*.1
 	if math.Abs(b.Vel.Len()-expectedSpeed) > 1e-10 {
 		t.Fatalf("unexpected rolling deceleration %.9f, want %.9f", b.Vel.Len(), expectedSpeed)
+	}
+}
+
+func TestRollingBallRetainsUsefulSpeedAfterThreeSeconds(t *testing.T) {
+	cfg, e := testEngine(t)
+	r := cfg.Table.Ball.Radius
+	b := Ball{ID: 0, Vel: Vec2{.6, 0}, Omega: Vec3{Y: .6 / r}, Z: r, State: BallOnTable}
+	e.integrateOnTable(&b, 3)
+	if speed := b.Vel.Len(); speed < .25 {
+		t.Fatalf("rolling ball slowed too abruptly: %.4f m/s after three seconds", speed)
 	}
 }
 

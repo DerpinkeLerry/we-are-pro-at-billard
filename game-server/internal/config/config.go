@@ -11,10 +11,10 @@ import (
 
 const (
 	TableConfigFile   = "pool-7ft-v2.json"
-	PhysicsConfigFile = "physics-v2.json"
+	PhysicsConfigFile = "physics-v3.json"
 	RulesConfigFile   = "red-yellow-8ball-v1.json"
 	TableVersion      = "pool-7ft-v2"
-	PhysicsVersion    = "physics-v2"
+	PhysicsVersion    = "physics-v3"
 	RulesVersion      = "red-yellow-8ball-v1"
 )
 
@@ -77,6 +77,7 @@ type Physics struct {
 	SleepDuration                   float64 `json:"sleepDuration"`
 	CueMaxSpeed                     float64 `json:"cueMaxSpeed"`
 	CueMinSpeed                     float64 `json:"cueMinSpeed"`
+	CuePowerExponent                float64 `json:"cuePowerExponent"`
 	CueSpinFactor                   float64 `json:"cueSpinFactor"`
 	PocketHorizontalDamping         float64 `json:"pocketHorizontalDamping"`
 	SolverIterations                int     `json:"solverIterations"`
@@ -149,7 +150,7 @@ func Load() (All, error) {
 	if math.Abs(out.Table.Ball.Diameter-2*out.Table.Ball.Radius) > 1e-9 {
 		return All{}, fmt.Errorf("ball diameter/radius mismatch")
 	}
-	if out.Physics.BallRestitution < 0 || out.Physics.BallRestitution > 1 || out.Physics.CushionRestitution < 0 || out.Physics.CushionRestitution > 1 || out.Physics.BallFriction < 0 || out.Physics.CushionFriction < 0 || out.Physics.SlidingFriction <= 0 || out.Physics.RollingResistance <= 0 || out.Physics.SpinDecay <= 0 || out.Physics.StationarySpinDecay < out.Physics.SpinDecay || out.Physics.SleepSideSpinSpeed <= 0 || out.Physics.SlipSpeedEpsilon <= 0 || out.Physics.RestitutionVelocityThreshold < 0 {
+	if out.Physics.BallRestitution < 0 || out.Physics.BallRestitution > 1 || out.Physics.CushionRestitution < 0 || out.Physics.CushionFriction < 0 || out.Physics.CushionRestitution > 1 || out.Physics.BallFriction < 0 || out.Physics.SlidingFriction <= 0 || out.Physics.RollingResistance <= 0 || out.Physics.SpinDecay <= 0 || out.Physics.StationarySpinDecay < out.Physics.SpinDecay || out.Physics.SleepSideSpinSpeed <= 0 || out.Physics.SlipSpeedEpsilon <= 0 || out.Physics.RestitutionVelocityThreshold < 0 || out.Physics.CueMinSpeed < 0 || out.Physics.CueMaxSpeed <= out.Physics.CueMinSpeed || out.Physics.CuePowerExponent < 1 {
 		return All{}, fmt.Errorf("invalid physics coefficients")
 	}
 	cornerDerived := out.Table.Pockets.Corner.Mouth - 2*out.Table.Pockets.Corner.Shelf*math.Tan((out.Table.Pockets.Corner.HorizontalCutDeg-135)*math.Pi/180)
