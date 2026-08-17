@@ -57,6 +57,13 @@ func TestBallInHandServerValidation(t *testing.T) {
 	if g.State != StateAwaitingShot || g.BallInHand {
 		t.Fatalf("ball-in-hand did not transition to shot state: %s", g.State)
 	}
+	edge := math.Nextafter(1/math.Sqrt2, 1)
+	if edge*edge+edge*edge <= 1 {
+		t.Fatal("test setup did not produce a floating-point overshoot")
+	}
+	if _, _, err := g.StartShot(g.Turn, ShotInput{TurnNonce: g.TurnNonce, AimAngle: math.Pi, Power: .02, CueOffsetX: edge, CueOffsetY: edge, CalledPocket: -1}); err != nil {
+		t.Fatalf("rounded cue offset after ball-in-hand was rejected: %v", err)
+	}
 }
 
 func TestRejectsNonFiniteAndInvalidCall(t *testing.T) {

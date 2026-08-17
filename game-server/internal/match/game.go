@@ -86,8 +86,16 @@ func (g *Game) StartShot(shooter int, in ShotInput) (physics.Simulation, rules.O
 	if in.TurnNonce == "" || in.TurnNonce != g.TurnNonce {
 		return physics.Simulation{}, rules.Outcome{}, errors.New("stale_turn_nonce")
 	}
-	if !finite(in.Power) || !finite(in.CueOffsetX) || !finite(in.CueOffsetY) || in.Power < 0.02 || in.Power > 1 || in.CueOffsetX*in.CueOffsetX+in.CueOffsetY*in.CueOffsetY > 1 {
+	tipRadiusSquared := in.CueOffsetX*in.CueOffsetX + in.CueOffsetY*in.CueOffsetY
+	if !finite(in.Power) || !finite(in.CueOffsetX) || !finite(in.CueOffsetY) || in.Power < 0.02 || in.Power > 1 || tipRadiusSquared > 1.000001 {
 		return physics.Simulation{}, rules.Outcome{}, errors.New("invalid_shot_values")
+	}
+	// Browser pointer normalization can exceed the unit circle by a few ULPs.
+	// Accept that harmless round-off, then clamp before physics and persistence.
+	if tipRadiusSquared > 1 {
+		tipScale := 1 / math.Sqrt(tipRadiusSquared)
+		in.CueOffsetX *= tipScale
+		in.CueOffsetY *= tipScale
 	}
 	if !finite(in.AimAngle) {
 		return physics.Simulation{}, rules.Outcome{}, errors.New("invalid_aim")
