@@ -1,0 +1,46 @@
+{
+  "version": "wpa-9ft-v1",
+  "units": "meters",
+  "playingSurface": {
+    "length": 2.54,
+    "width": 1.27
+  },
+  "ball": {
+    "diameter": 0.05715,
+    "radius": 0.028575,
+    "mass": 0.17
+  },
+  "rails": {
+    "visualWidth": 0.145,
+    "cushionNoseHeightRatio": 0.635
+  },
+  "pockets": {
+    "corner": {
+      "mouth": 0.1143,
+      "horizontalCutDeg": 142.0,
+      "shelf": 0.04445,
+      "backDraftDeg": 13.5,
+      "facingThickness": 0.003175,
+      "throatWidth": 0.103384453,
+      "dropDepth": 0.14,
+      "dropRadiusX": 0.072,
+      "dropRadiusY": 0.072
+    },
+    "side": {
+      "mouth": 0.127,
+      "horizontalCutDeg": 104.0,
+      "shelf": 0.00635,
+      "backDraftDeg": 13.5,
+      "facingThickness": 0.003175,
+      "throatWidth": 0.123833534,
+      "dropDepth": 0.14,
+      "dropRadiusX": 0.079,
+      "dropRadiusY": 0.065
+    }
+  },
+  "rack": {
+    "footSpotX": 0.635,
+    "headStringX": -0.635,
+    "cueBreakX": -0.8
+  }
+}

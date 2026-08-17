@@ -1,0 +1,19 @@
+{
+  "version": "wpa-8ball-v1",
+  "name": "WPA 8-Ball",
+  "shotTimers": [
+    0,
+    30,
+    45,
+    60
+  ],
+  "readyTimeoutSeconds": 20,
+  "reconnectGraceSeconds": 30,
+  "postGameSeconds": 10,
+  "countdownSeconds": 3,
+  "callShots": true,
+  "safetyShots": true,
+  "ballInHandAfterStandardFoul": "anywhere",
+  "breakCueBallPlacement": "above_head_string",
+  "emptyLobbySeconds": 30
+}
