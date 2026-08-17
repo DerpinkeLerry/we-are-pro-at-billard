@@ -6,8 +6,8 @@ type Group string
 
 const (
 	Open    Group = "open"
-	Solids  Group = "solids"
-	Stripes Group = "stripes"
+	Reds    Group = "reds"
+	Yellows Group = "yellows"
 )
 
 type State struct {
@@ -53,7 +53,7 @@ func Evaluate(st State, shooter int, call ShotCall, before, after []physics.Ball
 
 	// Eight-ball loss/win conditions override ordinary turn continuation.
 	if eightPocketed || eightOff {
-		if eightOff || foul || !groupClearedBefore(st.Groups[shooter], before) || call.CalledBall != 8 || rep.PocketByBall[8] != call.CalledPocket || call.Safety {
+		if eightOff || foul || !groupClearedBefore(st.Groups[shooter], before) || call.Safety {
 			out.Winner = other
 			out.Loser = shooter
 			out.Continue = false
@@ -71,9 +71,9 @@ func Evaluate(st State, shooter int, call ShotCall, before, after []physics.Ball
 		return out
 	}
 
-	calledMade := call.CalledBall > 0 && contains(rep.Pocketed, call.CalledBall) && rep.PocketByBall[call.CalledBall] == call.CalledPocket
-	if st.Groups[shooter] == Open && calledMade && call.CalledBall != 8 {
-		g := groupForBall(call.CalledBall)
+	pocketedGroup := firstPocketedGroup(rep.Pocketed)
+	if st.Groups[shooter] == Open && pocketedGroup != Open {
+		g := pocketedGroup
 		if g != Open {
 			out.Groups[shooter] = g
 			out.Groups[other] = opposite(g)
@@ -83,13 +83,10 @@ func Evaluate(st State, shooter int, call ShotCall, before, after []physics.Ball
 		out.Continue = false
 		return out
 	}
-	if calledMade {
-		g := out.Groups[shooter]
-		if g == Open || ballBelongs(call.CalledBall, g) {
-			out.Continue = true
-			out.NextPlayer = shooter
-			return out
-		}
+	if g := out.Groups[shooter]; g != Open && pocketedFromGroup(rep.Pocketed, g) {
+		out.Continue = true
+		out.NextPlayer = shooter
+		return out
 	}
 	return out
 }
@@ -117,22 +114,17 @@ func evaluateBreak(st State, shooter int, before, after []physics.Ball, rep phys
 		out.NextPlayer = shooter
 		return out
 	}
-	if !objectPocketed && distinctObjectRails(rep.RailBallIDs) < 4 {
-		out.Foul = true
-		out.FoulCode = "illegal_break"
-		out.BreakChoice = BreakChoice{Required: true, Actor: other, Kind: "illegal_break", Options: []string{"accept_table", "rerack_opponent_break", "rerack_shooter_break"}}
-		return out
-	}
 	if foul {
 		out.Foul = true
 		out.FoulCode = breakFoulCode(rep)
 		out.BreakChoice = BreakChoice{Required: true, Actor: other, Kind: "break_foul", Options: []string{"accept_table", "ball_in_hand_head"}}
 		return out
 	}
-	if objectPocketed {
-		out.Continue = true
-		out.NextPlayer = shooter
+	if !objectPocketed {
+		return out
 	}
+	out.Continue = true
+	out.NextPlayer = shooter
 	return out
 }
 
@@ -181,24 +173,40 @@ func allGroupGone(g Group, balls []physics.Ball) bool {
 }
 func groupForBall(id int) Group {
 	if id >= 1 && id <= 7 {
-		return Solids
+		return Reds
 	}
 	if id >= 9 && id <= 15 {
-		return Stripes
+		return Yellows
 	}
 	return Open
 }
 func opposite(g Group) Group {
-	if g == Solids {
-		return Stripes
+	if g == Reds {
+		return Yellows
 	}
-	if g == Stripes {
-		return Solids
+	if g == Yellows {
+		return Reds
 	}
 	return Open
 }
 func ballBelongs(id int, g Group) bool {
-	return (g == Solids && id >= 1 && id <= 7) || (g == Stripes && id >= 9 && id <= 15)
+	return (g == Reds && id >= 1 && id <= 7) || (g == Yellows && id >= 9 && id <= 15)
+}
+func firstPocketedGroup(ids []int) Group {
+	for _, id := range ids {
+		if g := groupForBall(id); g != Open {
+			return g
+		}
+	}
+	return Open
+}
+func pocketedFromGroup(ids []int, g Group) bool {
+	for _, id := range ids {
+		if ballBelongs(id, g) {
+			return true
+		}
+	}
+	return false
 }
 func contains(a []int, v int) bool {
 	for _, x := range a {
@@ -215,15 +223,6 @@ func hasObjectOff(a []int) bool {
 		}
 	}
 	return false
-}
-func distinctObjectRails(a []int) int {
-	seen := map[int]struct{}{}
-	for _, x := range a {
-		if x != 0 {
-			seen[x] = struct{}{}
-		}
-	}
-	return len(seen)
 }
 func breakFoulCode(rep physics.ShotReport) string {
 	if rep.CueScratch {

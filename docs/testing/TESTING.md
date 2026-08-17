@@ -27,7 +27,9 @@ Abgedeckt sind unter anderem:
 
 ### Rules
 
-- Break/Open Table
+- Red/Yellow-Zuordnung auf der offenen Tabelle
+- legaler Break ohne Pot übergibt den offenen Tisch an den Gegner
+- Break-Pot lässt die Farben zunächst offen
 - Scratch und Ball-in-Hand
 - falscher First Contact
 - keine Rail nach Kontakt
@@ -58,6 +60,7 @@ Szenarien:
 - ungültiger Token
 - zwei Active Players plus queued Spectator
 - Spectator-Shot wird abgewiesen
+- Gegner erhält validierte Live-Queue-/Aim-Updates
 - Reconnect behält denselben Participant
 - Out-of-turn-Shot
 - Shot Spam Rate Limit
@@ -78,7 +81,8 @@ Der zweite Befehl verwendet Node ausschließlich als optionales Syntax-Lintwerkz
 - Very High / Normal / Very Low im selben Matchzustand vergleichen
 - Very Low: 30-FPS-Cap, DPR 1, keine Schatten, geringe Segmente im Debug-Overlay prüfen
 - Resize und Fullscreen in mehreren Seitenverhältnissen
-- Touch-Zielen/Power/Spin auf Mobilgerät
+- Maus/Touch: zielen, gedrückt halten, Ziellinie fixieren, nach unten ziehen und loslassen
+- horizontaler Kraftbalken, Kontaktpunkt und Gegner-Cue während der Bewegung
 - Spectator-Zoom verändert keinen Serverzustand
 - Debug-Collider visuell deckungsgleich mit Rail/Jaw/Mouth/Throat
 - Chat Timestamp, Spam-Limit und Mute

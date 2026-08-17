@@ -39,7 +39,7 @@ func signToken(t *testing.T, sub, nick, jti string) string {
 		"iss": "pool-web", "aud": "pool-game", "sub": sub, "iat": now, "nbf": now - 1, "exp": now + 60, "jti": jti,
 		"principalType": "guest", "principalId": strings.TrimPrefix(sub, "guest:"), "nickname": nick,
 		"lobbyId": "00000000-0000-4000-8000-000000000001", "lobbyCode": "NETTEST", "lobbyName": "Network Test",
-		"cueSkin": "classic-maple", "shotTimerSeconds": 45, "rulesetVersion": "wpa-8ball-v1", "tableConfigVersion": "pool-7ft-v2",
+		"cueSkin": "classic-maple", "shotTimerSeconds": 45, "rulesetVersion": "red-yellow-8ball-v1", "tableConfigVersion": "pool-7ft-v2",
 	}
 	header, _ := json.Marshal(map[string]any{"alg": "HS256", "typ": "JWT"})
 	body, _ := json.Marshal(claims)
@@ -222,6 +222,24 @@ func TestSpectatorCannotShoot(t *testing.T) {
 	m := mustData(t, waitFor(t, c.conn, "SHOT_REJECTED", 2*time.Second))
 	if m["reason"] != "spectator_cannot_shoot" {
 		t.Fatalf("unexpected rejection %#v", m)
+	}
+}
+
+func TestOpponentReceivesLiveCueAim(t *testing.T) {
+	wsURL, _, cleanup := startServer(t, func(c *config.All) { c.Rules.CountdownSeconds = 0 })
+	defer cleanup()
+	a := join(t, wsURL, "guest:aim-a", "Alpha", 1)
+	defer a.conn.Close()
+	b := join(t, wsURL, "guest:aim-b", "Bravo", 1)
+	defer b.conn.Close()
+	m := readyAndStart(t, a, b)
+	write(t, a.conn, map[string]any{
+		"type": "AIM_UPDATE", "matchId": m["id"], "turnNonce": m["turnNonce"],
+		"aimAngle": 0.75, "power": 0.6, "charging": true,
+	})
+	aim := mustData(t, waitFor(t, b.conn, "CUE_AIM", 2*time.Second))
+	if aim["participantId"] != a.publicID || aim["seat"] != float64(0) || aim["aimAngle"] != 0.75 || aim["power"] != 0.6 || aim["charging"] != true || aim["cueSkin"] != "classic-maple" {
+		t.Fatalf("opponent received bad cue aim: %#v", aim)
 	}
 }
 

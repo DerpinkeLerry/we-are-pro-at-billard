@@ -13,19 +13,19 @@ func NewRack(table config.Table, seed int64) []Ball {
 		balls[i] = Ball{ID: i, Z: r, State: BallOnTable, PocketID: -1}
 	}
 	balls[0].Pos = Vec2{table.Rack.CueBreakX, 0}
-	solids := []int{1, 2, 3, 4, 5, 6, 7}
-	stripes := []int{9, 10, 11, 12, 13, 14, 15}
+	reds := []int{1, 2, 3, 4, 5, 6, 7}
+	yellows := []int{9, 10, 11, 12, 13, 14, 15}
 	rng := rand.New(rand.NewSource(seed))
-	rng.Shuffle(len(solids), func(i, j int) { solids[i], solids[j] = solids[j], solids[i] })
-	rng.Shuffle(len(stripes), func(i, j int) { stripes[i], stripes[j] = stripes[j], stripes[i] })
+	rng.Shuffle(len(reds), func(i, j int) { reds[i], reds[j] = reds[j], reds[i] })
+	rng.Shuffle(len(yellows), func(i, j int) { yellows[i], yellows[j] = yellows[j], yellows[i] })
 	slots := make([]int, 15)
 	for i := range slots {
 		slots[i] = -1
 	}
 	slots[4] = 8 // row 3 center in flattened rows: 0 | 1,2 | 3,4,5
-	slots[10] = solids[0]
-	slots[14] = stripes[0] // rear corners are opposite groups
-	pool := append(append([]int{}, solids[1:]...), stripes[1:]...)
+	slots[10] = reds[0]
+	slots[14] = yellows[0] // rear corners are opposite colours
+	pool := append(append([]int{}, reds[1:]...), yellows[1:]...)
 	rng.Shuffle(len(pool), func(i, j int) { pool[i], pool[j] = pool[j], pool[i] })
 	pi := 0
 	for i := range slots {

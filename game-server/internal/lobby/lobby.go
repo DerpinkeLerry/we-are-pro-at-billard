@@ -159,6 +159,8 @@ func (l *Lobby) handleMessage(c msgCmd) {
 		l.handleShot(p, m)
 	case "BALL_IN_HAND_PLACE":
 		l.handlePlacement(p, m)
+	case "AIM_UPDATE":
+		l.handleAimUpdate(p, m)
 	case "CHAT_SEND":
 		l.handleChat(p, m.Text)
 	case "CLIENT_PING":
@@ -239,6 +241,16 @@ func (l *Lobby) handlePlacement(p *Participant, m protocol.ClientMessage) {
 	l.broadcast("MATCH_KEYFRAME", l.game.Public())
 	l.broadcastState()
 	l.saveCheckpoint()
+}
+func (l *Lobby) handleAimUpdate(p *Participant, m protocol.ClientMessage) {
+	if l.game == nil || l.game.State != match.StateAwaitingShot || !l.participantOwnsSeat(p, l.game.Turn) || m.MatchID != l.game.ID || m.TurnNonce != l.game.TurnNonce {
+		return
+	}
+	if math.IsNaN(m.AimAngle) || math.IsInf(m.AimAngle, 0) || math.IsNaN(m.Power) || math.IsInf(m.Power, 0) {
+		return
+	}
+	power := math.Max(0, math.Min(1, m.Power))
+	l.broadcast("CUE_AIM", map[string]any{"participantId": p.PublicID, "seat": l.game.Turn, "aimAngle": m.AimAngle, "power": power, "charging": m.Charging, "cueSkin": p.CueSkin})
 }
 func (l *Lobby) handleBreakChoice(p *Participant, choice string) {
 	if l.game == nil || !l.participantOwnsSeat(p, l.game.PendingChoice.Actor) {

@@ -17,6 +17,7 @@ Kontrollnachrichten sind JSON. Laufende Physics-Snapshots sind binär. Jede Serv
 - `AUTH`
 - `READY_SET`
 - `SHOT_REQUEST`
+- `AIM_UPDATE`
 - `BALL_IN_HAND_PLACE`
 - `CHAT_SEND`
 - `CLIENT_PING`
@@ -35,11 +36,11 @@ Ein `SHOT_REQUEST` enthält:
   "power":0.55,
   "cueOffsetX":0.0,
   "cueOffsetY":0.0,
-  "calledBall":3,
-  "calledPocket":0,
   "safety":false
 }
 ```
+
+`AIM_UPDATE` überträgt ausschließlich die momentane Queue-Darstellung (`aimAngle`, Pull-back-`power`, `charging`). Match, Turn und `turnNonce` werden geprüft; die Nachricht verändert weder Kugeln noch Regeln.
 
 Der Server akzeptiert niemals Ballpositionen, Geschwindigkeiten oder Regelresultate vom Client.
 
@@ -51,6 +52,7 @@ Tatsächlich emittierte Eventtypen:
 - `LOBBY_STATE`, `READY_STATE`, `COUNTDOWN`
 - `MATCH_STARTED`, `MATCH_KEYFRAME`
 - `TURN_STARTED`
+- `CUE_AIM`
 - `SHOT_ACCEPTED`, `SHOT_REJECTED`, `COLLISION_EVENTS`, `SHOT_RESOLVED`
 - `FOUL`, `BREAK_OPTION_REQUIRED`
 - `PLAYER_RECONNECTING`, `PLAYER_RECONNECTED`
@@ -86,7 +88,7 @@ Während Bewegung erzeugt die 120-Hz-Simulation ungefähr 30 Netzframes pro Simu
 - Join-JWTs besitzen `jti` und kurze Ablaufzeit; verwendete `jti` werden bis zum Ablauf blockiert.
 - Jeder Turn erhält einen neuen zufälligen `turnNonce`.
 - `requestId` wird pro Participant zeitlich dedupliziert.
-- `matchId`, Active Seat, Match-State, Shot Timer, Power, Cue-Offset, Call-Daten und Spectator-Rolle werden serverseitig validiert.
+- `matchId`, Active Seat, Match-State, Shot Timer, Power, Cue-Offset, Aim-Updates und Spectator-Rolle werden serverseitig validiert.
 
 ## Reconnect
 

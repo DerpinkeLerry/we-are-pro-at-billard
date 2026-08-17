@@ -18,8 +18,9 @@ Apache ist der einzige öffentliche Listener. `/ws` und `/ping` werden intern an
 - Guests sowie Registrierung/Login, Profil, Statistiken und Match-History
 - sieben kosmetische Cue-Skins
 - Very High / Normal / Very Low Grafikprofile
-- dauerhaft lesbare Ballnummern im Very-Low-Profil
-- server-authoritatives 8-Ball mit Call Ball/Pocket, Safety, Fouls, Scratch und Ball-in-Hand
+- unnummerierter Red/Yellow-Ballsatz mit klar unterscheidbaren Farben in allen Grafikprofilen
+- server-authoritatives Red/Yellow-8-Ball mit offener Farbwahl nach dem Break, Safety, Fouls, Scratch und Ball-in-Hand
+- fixierbare Ziellinie mit Kontaktpunkt, Pull-back-Kraftsteuerung und sichtbarem Gegner-Cue
 - FIFO-Rotation, Spectators, Ready-System und Reconnect-Grace-Period
 - 120-Hz-Go-Physics auf einer maßhaltigen 7-ft-Spielfläche mit CCD, Spin, Gleit-/Rollreibung, Cushion/Jaw-Kollisionen und geometrischen Pockets
 - binäre Physics-Snapshots plus JSON-Control-Events
@@ -48,7 +49,7 @@ Browser
 +------------------------------------------+
 ```
 
-Der Browser ist niemals autoritativ. Er sendet nur Eingaben wie Zielwinkel, Power, Cue-Offset, Call-Daten und `turnNonce`. Go entscheidet über gültige Aktionen, berechnet die komplette Physik und wertet die Regeln aus.
+Der Browser ist niemals autoritativ. Er sendet nur Eingaben wie Zielwinkel, Power, Cue-Offset und `turnNonce`. Go entscheidet über gültige Aktionen, berechnet die komplette Physik und wertet die Regeln aus.
 
 ## Repository
 
@@ -211,4 +212,4 @@ find web/public/assets/js -name '*.js' -print0 | xargs -0 -n1 node --check
 
 ## Regel- und Geometriequellen
 
-Die gemeinsame Projektkonfiguration basiert auf den dokumentierten WPA-Regeln und Equipment-Spezifikationen. Die konkreten Projektwerte liegen versioniert in `config/` und werden von Renderer und Physics aus derselben Quelle gelesen.
+Die konkrete Red/Yellow-Regel-, Tisch- und Physikkonfiguration liegt versioniert in `config/`; Renderer, Matchserver und Physics verwenden dieselben Projektwerte.

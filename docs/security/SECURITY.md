@@ -2,7 +2,7 @@
 
 ## Browser als nicht vertrauenswürdig
 
-Der Client sendet keine autoritativen Kugelpositionen. Go validiert Match, Seat, State, `turnNonce`, Power, Spin, Ball-in-Hand und Call-Daten serverseitig.
+Der Client sendet keine autoritativen Kugelpositionen. Go validiert Match, Seat, State, `turnNonce`, Power, Spin, Ball-in-Hand und kosmetische Aim-Updates serverseitig.
 
 ## Sessions
 

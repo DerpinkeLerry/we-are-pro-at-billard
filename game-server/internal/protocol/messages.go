@@ -14,6 +14,7 @@ type ClientMessage struct {
 	CalledBall   int     `json:"calledBall,omitempty"`
 	CalledPocket int     `json:"calledPocket,omitempty"`
 	Safety       bool    `json:"safety,omitempty"`
+	Charging     bool    `json:"charging,omitempty"`
 	X            float64 `json:"x,omitempty"`
 	Y            float64 `json:"y,omitempty"`
 	Text         string  `json:"text,omitempty"`

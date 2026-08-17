@@ -12,8 +12,10 @@ import (
 const (
 	TableConfigFile   = "pool-7ft-v2.json"
 	PhysicsConfigFile = "physics-v2.json"
+	RulesConfigFile   = "red-yellow-8ball-v1.json"
 	TableVersion      = "pool-7ft-v2"
 	PhysicsVersion    = "physics-v2"
+	RulesVersion      = "red-yellow-8ball-v1"
 )
 
 type Table struct {
@@ -132,11 +134,11 @@ func Load() (All, error) {
 	if err := read(filepath.Join(root, "physics", PhysicsConfigFile), &out.Physics); err != nil {
 		return All{}, err
 	}
-	if err := read(filepath.Join(root, "rules", "wpa-8ball-v1.json"), &out.Rules); err != nil {
+	if err := read(filepath.Join(root, "rules", RulesConfigFile), &out.Rules); err != nil {
 		return All{}, err
 	}
-	if out.Table.Version != TableVersion || out.Physics.Version != PhysicsVersion || out.Table.Units != "meters" {
-		return All{}, fmt.Errorf("unexpected table or physics version")
+	if out.Table.Version != TableVersion || out.Physics.Version != PhysicsVersion || out.Rules.Version != RulesVersion || out.Table.Units != "meters" {
+		return All{}, fmt.Errorf("unexpected table, physics, or rules version")
 	}
 	if out.Physics.Hz < 30 || out.Physics.MaxSubsteps < 1 || out.Physics.MaxDisplacementFractionOfRadius <= 0 || out.Physics.MaxDisplacementFractionOfRadius > 1 || out.Table.PlayingSurface.Length <= 0 || out.Table.PlayingSurface.Width <= 0 || out.Table.Ball.Radius <= 0 || out.Table.Ball.Mass <= 0 {
 		return All{}, fmt.Errorf("invalid configuration")
