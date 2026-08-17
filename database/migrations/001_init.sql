@@ -40,7 +40,7 @@ CREATE TABLE IF NOT EXISTS lobbies (
   password_hash TEXT,
   shot_timer_seconds INTEGER NOT NULL DEFAULT 45 CHECK (shot_timer_seconds IN (0,30,45,60)),
   ruleset_version TEXT NOT NULL DEFAULT 'wpa-8ball-v1',
-  table_config_version TEXT NOT NULL DEFAULT 'wpa-9ft-v1',
+  table_config_version TEXT NOT NULL DEFAULT 'pool-7ft-v2',
   created_at INTEGER NOT NULL,
   closed_at INTEGER
 );

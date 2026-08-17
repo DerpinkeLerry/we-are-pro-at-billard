@@ -148,3 +148,138 @@ func TestSideSpinIsStoredAsVerticalAngularVelocity(t *testing.T) {
 		t.Fatalf("side spin angular velocity missing from simulation: %+v", sim.Frames)
 	}
 }
+
+func TestSevenFootTableUsesExactTwoToOnePlayingSurface(t *testing.T) {
+	cfg, _ := testEngine(t)
+	if cfg.Table.Version != "pool-7ft-v2" {
+		t.Fatalf("unexpected table version %q", cfg.Table.Version)
+	}
+	if math.Abs(cfg.Table.PlayingSurface.Length-1.9812) > 1e-9 || math.Abs(cfg.Table.PlayingSurface.Width-0.9906) > 1e-9 {
+		t.Fatalf("expected 78x39 inch playing surface, got %.4fx%.4f m", cfg.Table.PlayingSurface.Length, cfg.Table.PlayingSurface.Width)
+	}
+	if math.Abs(cfg.Table.Rack.FootSpotX-cfg.Table.PlayingSurface.Length/4) > 1e-9 || math.Abs(cfg.Table.Rack.HeadStringX+cfg.Table.PlayingSurface.Length/4) > 1e-9 {
+		t.Fatalf("spots are not at the table quarters: %+v", cfg.Table.Rack)
+	}
+}
+
+func TestCueTipVerticalOffsetHasCorrectSpinDirection(t *testing.T) {
+	cfg, e := testEngine(t)
+	r := cfg.Table.Ball.Radius
+	initial := []Ball{{ID: 0, Pos: Vec2{-0.3, 0}, Z: r, State: BallOnTable}}
+	top, err := e.SimulateShot(initial, ShotRequest{AimAngle: 0, Power: .15, CueOffsetY: .7})
+	if err != nil {
+		t.Fatal(err)
+	}
+	draw, err := e.SimulateShot(initial, ShotRequest{AimAngle: 0, Power: .15, CueOffsetY: -.7})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(top.Frames) < 2 || top.Frames[1].Balls[0].WY <= 0 {
+		t.Fatalf("positive tip height must create topspin, got %+v", top.Frames)
+	}
+	if len(draw.Frames) < 2 || draw.Frames[1].Balls[0].WY >= 0 {
+		t.Fatalf("negative tip height must create draw, got %+v", draw.Frames)
+	}
+}
+
+func TestPureRollingStaysOnNoSlipConstraint(t *testing.T) {
+	cfg, e := testEngine(t)
+	r := cfg.Table.Ball.Radius
+	b := Ball{ID: 0, Vel: Vec2{1, 0}, Omega: Vec3{Y: 1 / r}, Z: r, State: BallOnTable}
+	e.integrateOnTable(&b, .1)
+	slip := Vec2{b.Vel.X - r*b.Omega.Y, b.Vel.Y + r*b.Omega.X}.Len()
+	if slip > 1e-10 {
+		t.Fatalf("rolling resistance broke no-slip constraint: %.12f", slip)
+	}
+	expectedSpeed := 1 - cfg.Physics.RollingResistance*cfg.Physics.Gravity*.1
+	if math.Abs(b.Vel.Len()-expectedSpeed) > 1e-10 {
+		t.Fatalf("unexpected rolling deceleration %.9f, want %.9f", b.Vel.Len(), expectedSpeed)
+	}
+}
+
+func TestGrazingCushionDoesNotStealTangentialSpeed(t *testing.T) {
+	cfg, e := testEngine(t)
+	r := cfg.Table.Ball.Radius
+	s := firstSegment(e.Geometry, "cushion")
+	mid := s.A.Add(s.B).Mul(.5)
+	balls := []Ball{{ID: 0, Pos: Vec2{mid.X, mid.Y - r*.99}, Vel: Vec2{2, .05}, Z: r, State: BallOnTable}}
+	rep := ShotReport{FirstObjectBall: -1, PocketByBall: map[int]int{}}
+	e.solveSegments(balls, .1, &rep, map[int]bool{}, -1)
+	if loss := 2 - balls[0].Vel.X; loss < 0 || loss > .012 {
+		t.Fatalf("grazing cushion changed tangential speed by %.6f: %+v", loss, balls[0].Vel)
+	}
+}
+
+func TestPocketCaptureRequiresFullBallClearance(t *testing.T) {
+	cfg, e := testEngine(t)
+	pk := e.Geometry.Pockets[0]
+	clearHalfWidth := pk.ThroatWidth/2 - cfg.Table.Ball.Radius
+	p := pk.ThroatMid.Add(pk.Dir.Mul(.001)).Add(pk.Tangent.Mul(clearHalfWidth + .002))
+	if _, ok := e.Geometry.pocketForFalling(p); ok {
+		t.Fatal("ball intersecting a throat endpoint was captured")
+	}
+}
+
+func TestBallImpactConservesMomentumAndDoesNotCreateEnergy(t *testing.T) {
+	cfg, e := testEngine(t)
+	r := cfg.Table.Ball.Radius
+	m := cfg.Table.Ball.Mass
+	a := Ball{ID: 0, Vel: Vec2{1.8, .4}, Omega: Vec3{Z: 12}, Z: r, State: BallOnTable}
+	b := Ball{ID: 1, Vel: Vec2{0, -.1}, Omega: Vec3{Z: -4}, Z: r, State: BallOnTable}
+	momentumBefore := a.Vel.Add(b.Vel).Mul(m)
+	energy := func(x Ball) float64 {
+		inertia := .4 * m * r * r
+		return .5*m*x.Vel.Len2() + .5*inertia*(x.Omega.X*x.Omega.X+x.Omega.Y*x.Omega.Y+x.Omega.Z*x.Omega.Z)
+	}
+	energyBefore := energy(a) + energy(b)
+	if _, ok := e.resolveBallImpact(&a, &b, Vec2{1, 0}); !ok {
+		t.Fatal("expected approaching balls to collide")
+	}
+	momentumAfter := a.Vel.Add(b.Vel).Mul(m)
+	if momentumAfter.Sub(momentumBefore).Len() > 1e-10 {
+		t.Fatalf("ball impact changed linear momentum: before=%+v after=%+v", momentumBefore, momentumAfter)
+	}
+	if energyAfter := energy(a) + energy(b); energyAfter > energyBefore+1e-10 {
+		t.Fatalf("ball impact created energy: before=%.9f after=%.9f", energyBefore, energyAfter)
+	}
+}
+
+func TestSevenFootBreakProducesStableRackSeparation(t *testing.T) {
+	cfg, e := testEngine(t)
+	initial := NewRack(cfg.Table, 17)
+	start := make(map[int]Vec2, len(initial))
+	for _, b := range initial {
+		start[b.ID] = b.Pos
+	}
+	sim, err := e.SimulateShot(initial, ShotRequest{AimAngle: 0, Power: .78})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if sim.Report.FirstObjectBall <= 0 {
+		t.Fatalf("break missed the rack: first=%d", sim.Report.FirstObjectBall)
+	}
+	if sim.Report.SimulationDuration >= 25 {
+		t.Fatal("break failed to settle before the simulation limit")
+	}
+	moved := 0
+	for i, a := range sim.Final {
+		if a.State == BallOffTable {
+			t.Fatalf("ordinary break launched ball %d off table", a.ID)
+		}
+		if a.State != BallOnTable || a.Pos.Sub(start[a.ID]).Len() > cfg.Table.Ball.Diameter {
+			moved++
+		}
+		if a.State != BallOnTable {
+			continue
+		}
+		for j := i + 1; j < len(sim.Final); j++ {
+			b := sim.Final[j]
+			if b.State == BallOnTable && b.Pos.Sub(a.Pos).Len() < cfg.Table.Ball.Diameter-cfg.Physics.PenetrationSlop*2 {
+				t.Fatalf("final balls overlap: %d and %d", a.ID, b.ID)
+			}
+		}
+	}
+	if moved < 6 {
+		t.Fatalf("break scattered only %d balls", moved)
+	}
+}

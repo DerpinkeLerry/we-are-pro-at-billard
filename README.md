@@ -19,7 +19,7 @@ Apache ist der einzige öffentliche Listener. `/ws` und `/ping` werden intern an
 - Very High / Normal / Very Low Grafikprofile
 - server-authoritatives 8-Ball mit Call Ball/Pocket, Safety, Fouls, Scratch und Ball-in-Hand
 - FIFO-Rotation, Spectators, Ready-System und Reconnect-Grace-Period
-- 120-Hz-Go-Physics mit CCD, Spin, Reibung, Cushion/Jaw-Kollisionen und geometrischen Pockets
+- 120-Hz-Go-Physics auf einer maßhaltigen 7-ft-Spielfläche mit CCD, Spin, Gleit-/Rollreibung, Cushion/Jaw-Kollisionen und geometrischen Pockets
 - binäre Physics-Snapshots plus JSON-Control-Events
 - Maus, Tastatur und Touch
 - Lobby-Chat, Audio, Fullscreen und Debug-Overlay

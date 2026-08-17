@@ -39,7 +39,7 @@ func signToken(t *testing.T, sub, nick, jti string) string {
 		"iss": "pool-web", "aud": "pool-game", "sub": sub, "iat": now, "nbf": now - 1, "exp": now + 60, "jti": jti,
 		"principalType": "guest", "principalId": strings.TrimPrefix(sub, "guest:"), "nickname": nick,
 		"lobbyId": "00000000-0000-4000-8000-000000000001", "lobbyCode": "NETTEST", "lobbyName": "Network Test",
-		"cueSkin": "classic-maple", "shotTimerSeconds": 45, "rulesetVersion": "wpa-8ball-v1", "tableConfigVersion": "wpa-9ft-v1",
+		"cueSkin": "classic-maple", "shotTimerSeconds": 45, "rulesetVersion": "wpa-8ball-v1", "tableConfigVersion": "pool-7ft-v2",
 	}
 	header, _ := json.Marshal(map[string]any{"alg": "HS256", "typ": "JWT"})
 	body, _ := json.Marshal(claims)

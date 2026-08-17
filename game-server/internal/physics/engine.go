@@ -29,12 +29,13 @@ func (e *Engine) SimulateShot(initial []Ball, shot ShotRequest) (Simulation, err
 	speed := e.Cfg.CueMinSpeed + (e.Cfg.CueMaxSpeed-e.Cfg.CueMinSpeed)*shot.Power
 	dir := Vec2{math.Cos(shot.AimAngle), math.Sin(shot.AimAngle)}
 	cue.Vel = dir.Mul(speed)
-	// Vertical tip offset creates draw/follow rolling-axis spin. Horizontal offset creates side spin.
+	// A positive vertical tip offset is topspin: k x shotDirection points
+	// along the positive rolling axis. Horizontal tip offset creates side spin.
 	tang := dir.Perp()
 	spinScale := speed / e.Table.Ball.Radius * e.Cfg.CueSpinFactor
-	cue.Omega.X += -tang.X * shot.CueOffsetY * spinScale
-	cue.Omega.Y += -tang.Y * shot.CueOffsetY * spinScale
-	cue.Omega.Z += -shot.CueOffsetX * spinScale
+	cue.Omega.X = tang.X * shot.CueOffsetY * spinScale
+	cue.Omega.Y = tang.Y * shot.CueOffsetY * spinScale
+	cue.Omega.Z = -shot.CueOffsetX * spinScale
 
 	rep := ShotReport{FirstObjectBall: -1, PocketByBall: map[int]int{}}
 	frames := []Frame{{Time: 0, Balls: SnapshotBalls(balls)}}
@@ -66,15 +67,16 @@ func (e *Engine) SimulateShot(initial []Ball, shot ShotRequest) (Simulation, err
 		}
 		sdt := dt / float64(sub)
 		for k := 0; k < sub; k++ {
+			stepTime := simTime + float64(k+1)*sdt
 			start := make([]Vec2, len(balls))
 			for i := range balls {
 				start[i] = balls[i].Pos
 			}
-			e.integrate(balls, sdt, simTime+float64(k+1)*sdt, &rep)
-			e.solveSweptBallContacts(balls, start, sdt, simTime+sdt, &rep, &firstContactTime)
-			e.solveBallContacts(balls, simTime+sdt, &rep, &firstContactTime)
-			e.solveSegments(balls, simTime+sdt, &rep, railSeen, firstContactTime)
-			e.checkPocketsAndBounds(balls, simTime+sdt, &rep)
+			e.integrate(balls, sdt, stepTime, &rep)
+			e.solveSweptBallContacts(balls, start, sdt, stepTime, &rep, &firstContactTime)
+			e.solveBallContacts(balls, stepTime, &rep, &firstContactTime)
+			e.solveSegments(balls, stepTime, &rep, railSeen, firstContactTime)
+			e.checkPocketsAndBounds(balls, stepTime, &rep)
 		}
 		simTime += dt
 		if simTime+1e-9 >= nextFrame {
@@ -103,30 +105,9 @@ func (e *Engine) integrate(balls []Ball, dt, eventTime float64, rep *ShotReport)
 		b := &balls[i]
 		switch b.State {
 		case BallOnTable:
-			slip := Vec2{b.Vel.X - r*b.Omega.Y, b.Vel.Y + r*b.Omega.X}
-			sl := slip.Len()
-			if sl > 0.018 {
-				a := slip.Mul(-e.Cfg.SlidingFriction * g / sl)
-				b.Vel = b.Vel.Add(a.Mul(dt))
-				// Solid sphere inertia 2/5 m r^2; angular acceleration from friction torque = 5/(2r) * a rotated.
-				b.Omega.X += (5.0 / (2 * r)) * a.Y * dt
-				b.Omega.Y += -(5.0 / (2 * r)) * a.X * dt
-			} else {
-				s := b.Vel.Len()
-				if s > 0 {
-					dec := e.Cfg.RollingResistance * g * dt
-					ns := math.Max(0, s-dec)
-					b.Vel = b.Vel.Mul(ns / s)
-				}
-				targetWX := -b.Vel.Y / r
-				targetWY := b.Vel.X / r
-				blend := math.Min(1, dt*18)
-				b.Omega.X += (targetWX - b.Omega.X) * blend
-				b.Omega.Y += (targetWY - b.Omega.Y) * blend
-			}
+			e.integrateOnTable(b, dt)
 			spinDecay := math.Exp(-e.Cfg.SpinDecay * dt)
 			b.Omega.Z *= spinDecay
-			b.Pos = b.Pos.Add(b.Vel.Mul(dt))
 			b.Z = r
 			if b.Vel.Len() < e.Cfg.SleepLinearSpeed && b.Omega.Len() < e.Cfg.SleepAngularSpeed {
 				b.SleepFor += dt
@@ -208,12 +189,57 @@ func (e *Engine) integrate(balls []Ball, dt, eventTime float64, rep *ShotReport)
 	}
 }
 
+// integrateOnTable advances cloth contact without numerically stepping across
+// the sliding-to-rolling transition. For a solid sphere the contact slip loses
+// speed at 7/2 times the translational friction acceleration. Once it reaches
+// zero, rolling resistance scales linear and rolling angular velocity together,
+// preserving the no-slip constraint instead of pulling omega toward it with an
+// arbitrary blend factor.
+func (e *Engine) integrateOnTable(b *Ball, dt float64) {
+	r := e.Table.Ball.Radius
+	g := e.Cfg.Gravity
+	remaining := dt
+	slip := Vec2{b.Vel.X - r*b.Omega.Y, b.Vel.Y + r*b.Omega.X}
+	slipSpeed := slip.Len()
+	if slipSpeed > e.Cfg.SlipSpeedEpsilon {
+		slideTime := remaining
+		timeToRoll := slipSpeed / (3.5 * e.Cfg.SlidingFriction * g)
+		if timeToRoll < slideTime {
+			slideTime = timeToRoll
+		}
+		a := slip.Mul(-e.Cfg.SlidingFriction * g / slipSpeed)
+		oldVel := b.Vel
+		b.Vel = b.Vel.Add(a.Mul(slideTime))
+		b.Omega.X += (5.0 / (2 * r)) * a.Y * slideTime
+		b.Omega.Y -= (5.0 / (2 * r)) * a.X * slideTime
+		b.Pos = b.Pos.Add(oldVel.Add(b.Vel).Mul(0.5 * slideTime))
+		remaining -= slideTime
+		if remaining <= 1e-12 {
+			return
+		}
+	}
+
+	// Snap only inside the small no-slip tolerance. At this point these values
+	// are the exact rolling constraint, not an artificial source of energy.
+	b.Omega.X = -b.Vel.Y / r
+	b.Omega.Y = b.Vel.X / r
+	speed := b.Vel.Len()
+	if speed <= 0 {
+		return
+	}
+	newSpeed := math.Max(0, speed-e.Cfg.RollingResistance*g*remaining)
+	oldVel := b.Vel
+	b.Vel = b.Vel.Mul(newSpeed / speed)
+	b.Pos = b.Pos.Add(oldVel.Add(b.Vel).Mul(0.5 * remaining))
+	b.Omega.X = -b.Vel.Y / r
+	b.Omega.Y = b.Vel.X / r
+}
+
 func (e *Engine) solveSweptBallContacts(balls []Ball, start []Vec2, dt, eventTime float64, rep *ShotReport, firstTime *float64) {
 	if dt <= 0 {
 		return
 	}
 	r := e.Table.Ball.Radius
-	m := e.Table.Ball.Mass
 	minDist := 2 * r
 	minDist2 := minDist * minDist
 	for i := 0; i < len(balls); i++ {
@@ -243,39 +269,17 @@ func (e *Engine) solveSweptBallContacts(balls []Ball, start []Vec2, dt, eventTim
 			if n.Len2() < 0.5 {
 				continue
 			}
-			rel := balls[j].Vel.Sub(balls[i].Vel)
-			vn := rel.Dot(n)
-			if vn >= 0 {
+			impactSpeed, resolved := e.resolveBallImpact(&balls[i], &balls[j], n)
+			if !resolved {
 				continue
 			}
-
-			jn := -(1 + e.Cfg.BallRestitution) * vn / (2 / m)
-			impulse := n.Mul(jn)
-			balls[i].Vel = balls[i].Vel.Sub(impulse.Mul(1 / m))
-			balls[j].Vel = balls[j].Vel.Add(impulse.Mul(1 / m))
-
-			tangent := n.Perp()
-			vt := balls[j].Vel.Sub(balls[i].Vel).Dot(tangent) - r*(balls[i].Omega.Z+balls[j].Omega.Z)
-			jt := -vt / (2/m + 2.5/m)
-			limit := e.Cfg.BallFriction * math.Abs(jn)
-			if jt > limit {
-				jt = limit
-			}
-			if jt < -limit {
-				jt = -limit
-			}
-			ti := tangent.Mul(jt)
-			balls[i].Vel = balls[i].Vel.Sub(ti.Mul(1 / m))
-			balls[j].Vel = balls[j].Vel.Add(ti.Mul(1 / m))
-			balls[i].Omega.Z -= 2.5 * jt / (m * r)
-			balls[j].Omega.Z -= 2.5 * jt / (m * r)
 
 			// Advance the remaining fraction using the post-impact velocities. A
 			// subsequent overlap/segment pass resolves simultaneous contacts.
 			remaining := dt - toi
 			balls[i].Pos = pa.Add(balls[i].Vel.Mul(remaining))
 			balls[j].Pos = pb.Add(balls[j].Vel.Mul(remaining))
-			intensity := math.Min(1, math.Abs(vn)/5)
+			intensity := math.Min(1, impactSpeed/5)
 			rep.Events = append(rep.Events, Event{Time: eventTime - remaining, Type: "ball", A: balls[i].ID, B: balls[j].ID, Intensity: intensity})
 			if rep.FirstObjectBall < 0 {
 				if balls[i].ID == 0 && balls[j].ID != 0 {
@@ -293,7 +297,6 @@ func (e *Engine) solveSweptBallContacts(balls []Ball, start []Vec2, dt, eventTim
 
 func (e *Engine) solveBallContacts(balls []Ball, t float64, rep *ShotReport, firstTime *float64) {
 	r := e.Table.Ball.Radius
-	m := e.Table.Ball.Mass
 	minDist := 2 * r
 	for iter := 0; iter < e.Cfg.SolverIterations; iter++ {
 		changed := false
@@ -311,29 +314,9 @@ func (e *Engine) solveBallContacts(balls []Ball, t float64, rep *ShotReport, fir
 					continue
 				}
 				n := d.Mul(1 / dist)
-				rel := balls[j].Vel.Sub(balls[i].Vel)
-				vn := rel.Dot(n)
-				if vn < 0 {
-					jn := -(1 + e.Cfg.BallRestitution) * vn / (2 / m)
-					impulse := n.Mul(jn)
-					balls[i].Vel = balls[i].Vel.Sub(impulse.Mul(1 / m))
-					balls[j].Vel = balls[j].Vel.Add(impulse.Mul(1 / m))
-					tangent := n.Perp()
-					vt := balls[j].Vel.Sub(balls[i].Vel).Dot(tangent) - r*(balls[i].Omega.Z+balls[j].Omega.Z)
-					jt := -vt / (2/m + 2.5/m)
-					limit := e.Cfg.BallFriction * math.Abs(jn)
-					if jt > limit {
-						jt = limit
-					}
-					if jt < -limit {
-						jt = -limit
-					}
-					ti := tangent.Mul(jt)
-					balls[i].Vel = balls[i].Vel.Sub(ti.Mul(1 / m))
-					balls[j].Vel = balls[j].Vel.Add(ti.Mul(1 / m))
-					balls[i].Omega.Z -= 2.5 * jt / (m * r)
-					balls[j].Omega.Z -= 2.5 * jt / (m * r)
-					intensity := math.Min(1, math.Abs(vn)/5)
+				impactSpeed, resolved := e.resolveBallImpact(&balls[i], &balls[j], n)
+				if resolved {
+					intensity := math.Min(1, impactSpeed/5)
 					rep.Events = append(rep.Events, Event{Time: t, Type: "ball", A: balls[i].ID, B: balls[j].ID, Intensity: intensity})
 					if rep.FirstObjectBall < 0 {
 						if balls[i].ID == 0 && balls[j].ID != 0 {
@@ -361,6 +344,45 @@ func (e *Engine) solveBallContacts(balls []Ball, t float64, rep *ShotReport, fir
 	}
 }
 
+// resolveBallImpact applies a rigid-sphere impulse for equal-mass pool balls.
+// The tangential effective mass is 7/m: 2/m translation plus 5/m rotation
+// (r^2/I from each solid sphere). The previous 4.5/m denominator made spin
+// transfer too strong and produced visibly bent collision paths.
+func (e *Engine) resolveBallImpact(a, b *Ball, n Vec2) (float64, bool) {
+	m := e.Table.Ball.Mass
+	r := e.Table.Ball.Radius
+	vn := b.Vel.Sub(a.Vel).Dot(n)
+	if vn >= 0 {
+		return 0, false
+	}
+	impactSpeed := -vn
+	restitution := e.effectiveRestitution(e.Cfg.BallRestitution, impactSpeed)
+	jn := (1 + restitution) * impactSpeed / (2 / m)
+	normalImpulse := n.Mul(jn)
+	a.Vel = a.Vel.Sub(normalImpulse.Mul(1 / m))
+	b.Vel = b.Vel.Add(normalImpulse.Mul(1 / m))
+
+	tangent := n.Perp()
+	contactSlip := b.Vel.Sub(a.Vel).Dot(tangent) - r*(a.Omega.Z+b.Omega.Z)
+	jt := -contactSlip / (7 / m)
+	limit := e.Cfg.BallFriction * jn
+	jt = math.Max(-limit, math.Min(limit, jt))
+	tangentImpulse := tangent.Mul(jt)
+	a.Vel = a.Vel.Sub(tangentImpulse.Mul(1 / m))
+	b.Vel = b.Vel.Add(tangentImpulse.Mul(1 / m))
+	a.Omega.Z -= 2.5 * jt / (m * r)
+	b.Omega.Z -= 2.5 * jt / (m * r)
+	return impactSpeed, true
+}
+
+func (e *Engine) effectiveRestitution(base, impactSpeed float64) float64 {
+	threshold := e.Cfg.RestitutionVelocityThreshold
+	if threshold > 0 && impactSpeed < threshold {
+		return base * impactSpeed / threshold
+	}
+	return base
+}
+
 func (e *Engine) solveSegments(balls []Ball, t float64, rep *ShotReport, railSeen map[int]bool, firstTime float64) {
 	r := e.Table.Ball.Radius
 	for i := range balls {
@@ -381,15 +403,22 @@ func (e *Engine) solveSegments(balls []Ball, t float64, rep *ShotReport, railSee
 				b.Pos = b.Pos.Add(n.Mul(r - dist))
 				continue
 			}
-			normalImpulse := -(1 + e.Cfg.CushionRestitution) * vn
-			b.Vel = b.Vel.Add(n.Mul(normalImpulse))
+			impactSpeed := -vn
+			restitution := e.effectiveRestitution(e.Cfg.CushionRestitution, impactSpeed)
+			normalDeltaV := (1 + restitution) * impactSpeed
+			b.Vel = b.Vel.Add(n.Mul(normalDeltaV))
 			tangent := n.Perp()
 			vt := b.Vel.Dot(tangent) - b.Omega.Z*r
-			deltaT := -vt * e.Cfg.CushionFriction
+			// A stationary cushion has tangential effective mass 3.5m. Limit
+			// the sticking impulse by Coulomb friction so a grazing rail contact
+			// cannot remove a fixed percentage of tangential speed.
+			deltaT := -vt / 3.5
+			frictionLimit := e.Cfg.CushionFriction * normalDeltaV
+			deltaT = math.Max(-frictionLimit, math.Min(frictionLimit, deltaT))
 			b.Vel = b.Vel.Add(tangent.Mul(deltaT))
 			b.Omega.Z -= 2.5 * deltaT / r
 			b.Pos = b.Pos.Add(n.Mul(r - dist + 0.00001))
-			intensity := math.Min(1, math.Abs(vn)/5)
+			intensity := math.Min(1, impactSpeed/5)
 			rep.Events = append(rep.Events, Event{Time: t, Type: s.Kind, A: b.ID, Intensity: intensity})
 			if s.Kind == "cushion" || s.Kind == "jaw" {
 				railSeen[b.ID] = true

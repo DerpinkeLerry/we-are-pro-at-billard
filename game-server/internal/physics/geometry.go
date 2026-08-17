@@ -101,7 +101,12 @@ func (g TableGeometry) pocketForFalling(p Vec2) (Pocket, bool) {
 		rel := p.Sub(pk.ThroatMid)
 		depth := rel.Dot(pk.Dir)
 		lat := rel.Dot(pk.Tangent)
-		if depth >= 0 && math.Abs(lat) <= pk.ThroatWidth/2-g.Radius*0.08 {
+		// The center must clear both throat endpoints by one ball radius.
+		// Testing almost the full throat width swallowed balls that were still
+		// physically resting on a jaw and was the main source of "magnetic"
+		// looking pockets.
+		clearHalfWidth := pk.ThroatWidth/2 - g.Radius
+		if depth >= 0 && clearHalfWidth > 0 && math.Abs(lat) <= clearHalfWidth {
 			return pk, true
 		}
 	}

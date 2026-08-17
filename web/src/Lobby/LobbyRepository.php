@@ -38,7 +38,7 @@ final class LobbyRepository
             $hash = $visibility === 'private' && $password !== null ? password_hash($password, PASSWORD_DEFAULT) : null;
             $stmt = $this->pdo->prepare(
                 "INSERT OR IGNORE INTO lobbies(id,short_code,creator_principal,name,visibility,password_hash,shot_timer_seconds,ruleset_version,table_config_version,created_at)
-                 VALUES(:id,:code,:principal,:name,:visibility,:hash,:timer,'wpa-8ball-v1','wpa-9ft-v1',:created)"
+                VALUES(:id,:code,:principal,:name,:visibility,:hash,:timer,'wpa-8ball-v1','pool-7ft-v2',:created)"
             );
             $stmt->execute([
                 'id' => $id,

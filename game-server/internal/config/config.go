@@ -9,8 +9,16 @@ import (
 	"path/filepath"
 )
 
+const (
+	TableConfigFile   = "pool-7ft-v2.json"
+	PhysicsConfigFile = "physics-v2.json"
+	TableVersion      = "pool-7ft-v2"
+	PhysicsVersion    = "physics-v2"
+)
+
 type Table struct {
 	Version        string `json:"version"`
+	Units          string `json:"units"`
 	PlayingSurface struct {
 		Length float64 `json:"length"`
 		Width  float64 `json:"width"`
@@ -70,6 +78,8 @@ type Physics struct {
 	SolverIterations                int     `json:"solverIterations"`
 	PenetrationSlop                 float64 `json:"penetrationSlop"`
 	PenetrationPercent              float64 `json:"penetrationPercent"`
+	RestitutionVelocityThreshold    float64 `json:"restitutionVelocityThreshold"`
+	SlipSpeedEpsilon                float64 `json:"slipSpeedEpsilon"`
 }
 
 type Rules struct {
@@ -105,7 +115,7 @@ func Load() (All, error) {
 	}
 	var root string
 	for _, d := range dirs {
-		if _, err := os.Stat(filepath.Join(d, "table", "wpa-9ft-v1.json")); err == nil {
+		if _, err := os.Stat(filepath.Join(d, "table", TableConfigFile)); err == nil {
 			root = d
 			break
 		}
@@ -114,20 +124,29 @@ func Load() (All, error) {
 		return All{}, errors.New("config directory not found")
 	}
 	var out All
-	if err := read(filepath.Join(root, "table", "wpa-9ft-v1.json"), &out.Table); err != nil {
+	if err := read(filepath.Join(root, "table", TableConfigFile), &out.Table); err != nil {
 		return All{}, err
 	}
-	if err := read(filepath.Join(root, "physics", "physics-v1.json"), &out.Physics); err != nil {
+	if err := read(filepath.Join(root, "physics", PhysicsConfigFile), &out.Physics); err != nil {
 		return All{}, err
 	}
 	if err := read(filepath.Join(root, "rules", "wpa-8ball-v1.json"), &out.Rules); err != nil {
 		return All{}, err
 	}
-	if out.Physics.Hz < 30 || out.Table.Ball.Radius <= 0 {
+	if out.Table.Version != TableVersion || out.Physics.Version != PhysicsVersion || out.Table.Units != "meters" {
+		return All{}, fmt.Errorf("unexpected table or physics version")
+	}
+	if out.Physics.Hz < 30 || out.Physics.MaxSubsteps < 1 || out.Physics.MaxDisplacementFractionOfRadius <= 0 || out.Physics.MaxDisplacementFractionOfRadius > 1 || out.Table.PlayingSurface.Length <= 0 || out.Table.PlayingSurface.Width <= 0 || out.Table.Ball.Radius <= 0 || out.Table.Ball.Mass <= 0 {
 		return All{}, fmt.Errorf("invalid configuration")
+	}
+	if math.Abs(out.Table.PlayingSurface.Length-2*out.Table.PlayingSurface.Width) > 1e-9 {
+		return All{}, fmt.Errorf("playing surface must have a 2:1 aspect ratio")
 	}
 	if math.Abs(out.Table.Ball.Diameter-2*out.Table.Ball.Radius) > 1e-9 {
 		return All{}, fmt.Errorf("ball diameter/radius mismatch")
+	}
+	if out.Physics.BallRestitution < 0 || out.Physics.BallRestitution > 1 || out.Physics.CushionRestitution < 0 || out.Physics.CushionRestitution > 1 || out.Physics.BallFriction < 0 || out.Physics.CushionFriction < 0 || out.Physics.SlidingFriction <= 0 || out.Physics.RollingResistance <= 0 || out.Physics.SlipSpeedEpsilon <= 0 || out.Physics.RestitutionVelocityThreshold < 0 {
+		return All{}, fmt.Errorf("invalid physics coefficients")
 	}
 	cornerDerived := out.Table.Pockets.Corner.Mouth - 2*out.Table.Pockets.Corner.Shelf*math.Tan((out.Table.Pockets.Corner.HorizontalCutDeg-135)*math.Pi/180)
 	sideDerived := out.Table.Pockets.Side.Mouth - 2*out.Table.Pockets.Side.Shelf*math.Tan((out.Table.Pockets.Side.HorizontalCutDeg-90)*math.Pi/180)

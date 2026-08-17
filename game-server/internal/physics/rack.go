@@ -60,7 +60,20 @@ func ResetCueBall(balls []Ball, table config.Table, headOnly bool) bool {
 	cue.Omega = Vec3{}
 	cue.Z = table.Ball.Radius
 	cue.VZ = 0
-	candidates := []Vec2{{table.Rack.CueBreakX, 0}, {-0.9, 0.15}, {-0.9, -0.15}, {-0.7, 0.25}, {-0.7, -0.25}}
+	halfL := table.PlayingSurface.Length / 2
+	halfW := table.PlayingSurface.Width / 2
+	playableHeadX := -halfL + table.Ball.Radius
+	headOnlyLimit := table.Rack.HeadStringX - table.Ball.Radius
+	deepHeadX := (playableHeadX + headOnlyLimit) / 2
+	nearStringX := table.Rack.HeadStringX - 2*table.Ball.Radius
+	lateral := math.Min(table.PlayingSurface.Width*0.18, halfW-2*table.Ball.Radius)
+	candidates := []Vec2{
+		{table.Rack.CueBreakX, 0},
+		{deepHeadX, lateral},
+		{deepHeadX, -lateral},
+		{nearStringX, 1.65 * lateral},
+		{nearStringX, -1.65 * lateral},
+	}
 	g := BuildGeometry(table)
 	for _, p := range candidates {
 		if headOnly && p.X > table.Rack.HeadStringX-table.Ball.Radius {
