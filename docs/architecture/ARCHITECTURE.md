@@ -31,6 +31,8 @@ Apache :$PORT
 
 Three.js besitzt nur Darstellungszustand. Autoritative Gameplay-Entscheidungen liegen vollständig in Go.
 
+Der Client kann dieselbe Szene wahlweise über eine orthografische 2D-Draufsicht oder eine Perspektivkamera hinter der weißen Kugel darstellen. Kamera, Pointer-Lock und Zielreticle verändern ausschließlich die Darstellung; der resultierende Zielwinkel und die Pull-back-Power durchlaufen in beiden Ansichten denselben validierten Shot-Request.
+
 Der Client darf insbesondere keine Kugelposition, Foulauswertung, Turn-Änderung oder Match-Ergebnis festlegen.
 
 ## PHP

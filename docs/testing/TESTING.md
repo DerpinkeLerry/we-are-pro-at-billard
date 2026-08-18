@@ -82,6 +82,9 @@ Der zweite Befehl verwendet Node ausschließlich als optionales Syntax-Lintwerkz
 - Very Low: 30-FPS-Cap, DPR 1, keine Schatten, geringe Segmente im Debug-Overlay prüfen
 - Resize und Fullscreen in mehreren Seitenverhältnissen
 - Maus/Touch: zielen, gedrückt halten, Ziellinie fixieren, nach unten ziehen und loslassen
+- 2D/3D-Umschalter und Taste `V`: Perspektive wechselt ohne Matchzustand oder Zielwinkel zurückzusetzen
+- 3D-Spielzug: Pointer-Lock, horizontales Drehen, Pull-back nach unten, `Esc` zum Freigeben und eingefrorene Abschussperspektive während der Kugelbewegung
+- 3D Ball-in-Hand: schräge Tischübersicht und gültige Platzierung per Raycast auf die Spielfläche
 - horizontaler Kraftbalken, Kontaktpunkt und Gegner-Cue während der Bewegung
 - Spectator-Zoom verändert keinen Serverzustand
 - Debug-Collider visuell deckungsgleich mit Rail/Jaw/Mouth/Throat

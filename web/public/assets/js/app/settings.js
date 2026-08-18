@@ -1,4 +1,4 @@
-const defaults = {cueSkin:'classic-maple', graphics:'normal', sound:true, masterVolume:.65, sfxVolume:.8, aimGuide:true, aimSensitivity:1, mutedPlayers:[], devDebug:false};
+const defaults = {cueSkin:'classic-maple', graphics:'normal', cameraMode:'2d', sound:true, masterVolume:.65, sfxVolume:.8, aimGuide:true, aimSensitivity:1, mutedPlayers:[], devDebug:false};
 let value = {...defaults};
 try { value = {...defaults, ...JSON.parse(localStorage.getItem('pool-settings') || '{}')}; } catch {}
 export const settings = {

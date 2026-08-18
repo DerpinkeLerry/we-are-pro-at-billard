@@ -12,7 +12,7 @@ Enthalten:
 - PHP Sessions/Accounts/Lobbies/Profile/History
 - Go Lobby/Rotation/Reconnect/Rules/Physics/WebSocket
 - interne HTTP-Persistenz zwischen Go und PHP
-- Three.js Client und Grafikprofile
+- Three.js Client mit 2D-/3D-Spielkamera und Grafikprofilen
 - gemeinsame Table/Physics/Rules-Konfigurationen
 - CI und Tests
 

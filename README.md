@@ -21,6 +21,7 @@ Apache ist der einzige öffentliche Listener. `/ws` und `/ping` werden intern an
 - unnummerierter Red/Yellow-Ballsatz mit klar unterscheidbaren Farben in allen Grafikprofilen
 - server-authoritatives Red/Yellow-8-Ball mit offener Farbwahl nach dem Break, Safety, Fouls, Scratch und Ball-in-Hand
 - fixierbare Ziellinie mit Kontaktpunkt, Pull-back-Kraftsteuerung und sichtbarem Gegner-Cue
+- jederzeit umschaltbare 2D-Draufsicht und echte 3D-Queue-Perspektive mit freier Mausdrehung
 - FIFO-Rotation, Spectators, Ready-System und Reconnect-Grace-Period
 - 120-Hz-Go-Physics auf einer maßhaltigen 7-ft-Spielfläche mit CCD, Spin, Gleit-/Rollreibung, Cushion/Jaw-Kollisionen und geometrischen Pockets
 - binäre Physics-Snapshots plus JSON-Control-Events
